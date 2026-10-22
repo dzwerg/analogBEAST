@@ -3442,14 +3442,6 @@ function paramRow(s, id) {
       const nv = Math.max(d.min, Math.min(d.max, +input.value + dv));
       if (nv !== +input.value) { input.value = String(nv); userSet(s, id, nv, true); }
     };
-    let acc = 0;
-    input.addEventListener("wheel", (e) => {
-      if (document.activeElement !== input) return;
-      e.preventDefault();
-      acc += (e.deltaMode === 1 ? 33 : 1) * (Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? -e.deltaY : e.deltaX);
-      const n = Math.trunc(acc / 50);
-      if (n) { acc -= n * 50; nudge(n * (e.shiftKey ? 10 : 1)); }
-    }, { passive: false });
     input.addEventListener("keydown", (e) => {
       const dir = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1 }[e.key];
       if (!dir || !e.shiftKey) return;
