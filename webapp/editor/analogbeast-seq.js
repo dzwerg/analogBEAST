@@ -649,8 +649,8 @@ function BufferlessASCII(s){return [...s].map(c=>c.charCodeAt(0));}
     const osc=previewCtx.createOscillator(),gain=previewCtx.createGain();osc.type='triangle';osc.frequency.value=440*Math.pow(2,(s.note-69)/12);
     const start=previewCtx.currentTime+0.002;
     const gateSeconds=previewGateSeconds(d,i,ms/1000);
-    schedulePreviewNote(osc,gain,start,gateSeconds,s.velocity);
-    osc.connect(gain).connect(previewCtx.destination);osc.start(start);notes.push(osc);
+    osc.connect(gain).connect(previewCtx.destination);osc.start(start);
+    schedulePreviewNote(osc,gain,start,gateSeconds,s.velocity);notes.push(osc);
    }}i++;timer=setTimeout(on,ms);};
   let timer=setTimeout(on,0);previewStop=()=>{stopped=true;clearTimeout(timer);for(const osc of notes){try{osc.stop();}catch(e){}}notes=[];};
   $('abseq-audition').textContent='■ Vorhören stoppen';
