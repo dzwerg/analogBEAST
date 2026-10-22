@@ -1,33 +1,28 @@
-# Contributing to Felucca
+# Contributing to analogBEAST / Mitmachen
 
-Thanks for helping! To keep things easy to follow, please use the right place:
+Thank you for your interest in **analogBEAST**, open-source custom firmware and browser tools for the M-VAVE FM-1.
 
-| What | Where |
-|---|---|
-| A bug you can reproduce | [Issues](https://github.com/hugelton/Felucca/issues/new/choose): one issue per bug |
-| A feature idea or request | [Discussions › Ideas](https://github.com/hugelton/Felucca/discussions/categories/ideas) (no promise it will be added) |
-| How to use it, or how something works | [Discussions › Q&A](https://github.com/hugelton/Felucca/discussions/categories/q-a) |
-| Forks, mods, music, demos | [Discussions › Show and tell](https://github.com/hugelton/Felucca/discussions/categories/show-and-tell) |
-| Anything else | [Discussions › General](https://github.com/hugelton/Felucca/discussions/categories/general) |
+**Repository:** https://github.com/dzwerg/analogBEAST
+**Issues:** https://github.com/dzwerg/analogBEAST/issues
 
-Feature requests posted as issues will be moved to Discussions or closed.
+## Report a bug / Fehler melden
 
-## Reporting a bug
+Please include: (1) the firmware version, (2) hardware/MIDI/browser setup, (3) exact steps to reproduce, (4) expected vs. actual behavior, and (5) the relevant log or screenshot if available. State whether the problem occurs on **real hardware**, **the web emulator**, or **the web editor**.
 
-Please include the Felucca version (hold HOME > ABOUT), your computer's OS and browser if the editor or
-installer is involved, the steps to reproduce it, what you expected and what happened. A photo or a short
-video helps.
+Bitte immer Version, Hardware-/MIDI-Konfiguration, Reproduktionsschritte, erwartetes und tatsächliches Verhalten sowie relevante Logs angeben. Wichtig: Tritt das Problem auf echter Hardware, im Emulator oder im Browser-Editor auf?
+
+## Feature requests / Ideen
+
+Requests concerning **MIKROKORG / BRUTE synthesis**, the **Steiner-Parker-inspired filter**, pattern editing, **SONG MODE**, **ALBUM MODE**, USB MIDI, and the web apps are welcome. Explain the intended musical workflow and how the requested feature would operate on the physical FM-1 controls.
 
 ## Pull requests
 
-Pull requests are welcome, including AI-assisted ones, with the same bar for all:
+- Keep changes focused and explain their behavior.
+- Check firmware memory/flash limits and real-time constraints when touching synthesis or transport code.
+- Run the applicable Python/Node/host tests and a firmware build where the toolchain is available.
+- Do not include personal NOR backups, private songs/presets, device dumps, `.fwsc` binaries generated during development, or local build artifacts unless they are explicitly required for a reviewed release.
+- Preserve original SPDX copyright lines, third-party licenses, and attribution.
+- New code must be compatible with the project's **GPL-3.0** licensing.
+- Do **not** change firmware package identity `FM-1_901` or the compatible loader name `Felucca Update` solely for branding.
 
-- keep it small and focused on one thing;
-- make sure you understand the change and can explain it;
-- test it on a real FM-1;
-- run `tests/run_tests.sh` (see [BUILDING.md](BUILDING.md));
-- new files carry the GPL-3.0-only SPDX header.
-
-By contributing you agree that your contribution is licensed under GPL-3.0-only.
-
-The web editor and installer live in [Felucca-WebApp](https://github.com/hugelton/Felucca-WebApp).
+**Upstream:** [Felucca](https://github.com/hugelton/Felucca) (Leo Kuroshita / Hügelton Instruments) and [Golana](https://github.com/Gadlele/Golana).

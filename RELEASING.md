@@ -1,17 +1,31 @@
-# Releasing a version
+# Releasing analogBEAST / Veröffentlichungen
 
-What happens for a new version (Claude does these steps when asked for "Golana 1.1"):
+## Published v1.0
 
-1. **The work** happens on `next`. When it is ready: the number in `firmware/src/felucca.c` (`FELUCCA_VERSION`) and in
-   `web/site/project.json`, a new entry at the top of `CHANGELOG.md` (`## 1.1 — date`, then what is new).
-2. **Build and test**: `./build.sh`, `sh tests/run_tests.sh`, then the package: `./build.sh --release 1.1`
-   (`build/felucca-1.1.fwsc`, identity `FM-1_911`).
-3. **The website** (branch `gh-pages`): `python3 web/site/make_pages.py build/felucca-1.1.fwsc build/emu/golana.html OUT`
-   writes it: "What's new" and the list of versions come from `CHANGELOG.md`. Commit OUT on `gh-pages`; check the
-   installer with `node web/site/test_install.mjs`.
-4. **`main`** takes `next` (a merge), and the tag: `git tag golana-v1.1 && git push origin main golana-v1.1` (with the name in front: Felucca's own tags v1.0 .. v1.5.1 came with its history). The tag (or, by hand, Actions › Release › Run workflow with the
-   version: then the workflow makes the tag) starts the **Release** workflow (`.github/workflows/release.yml`): the GitHub Release with the notes from `CHANGELOG.md` and
-   the package the website serves attached.
+- Repository: https://github.com/dzwerg/analogBEAST
+- GitHub release: https://github.com/dzwerg/analogBEAST/releases/tag/v1.0
+- Website: https://dzwerg.github.io/analogBEAST/
+- Firmware package identity: `FM-1_901`
 
-The numbers: **1.0.1** only fixes; **1.1** adds something and saved programs still open; **2.0** may change how
-things are saved. The package identity has room for X.Y: 1.0.1 keeps 1.0's `FM-1_910`.
+The original v1.0 Git tag and `.fwsc` / emulator release assets were published before this documentation update. **Documentation-only updates must not move the existing `v1.0` tag or rebuild/replace release binaries.** The existing `.github/workflows/release.yml` originated upstream; review and adapt its tags, website configuration, and source references before relying on it for analogBEAST releases.
+
+## Source and website layout
+
+- `main`: firmware sources, web sources, documentation and tests.
+- `gh-pages`: generated static website (`index.html`, `emu/`, `webapp/editor/`, `webapp/installer/`, `firmware/`).
+- `build/pages-site`: local, separate Git working directory for the `gh-pages` branch, *not* the firmware source repository.
+
+## Future release checklist
+
+1. Validate current firmware source, emulator source and browser assets.
+2. Run tests and perform a fresh build with the supported toolchain.
+3. Verify memory limits, firmware identity `FM-1_901`, loader compatibility, and SHA-256 sums.
+4. Back up hardware presets, patterns, songs and projects before flashing.
+5. Test a real FM-1: synth modes, program selection, bank A–H playback/editing, SONG, ALBUM, USB MIDI and persistent storage.
+6. Publish verified binaries in a GitHub Release, with versioned changelog and license notices.
+7. Deploy corresponding browser assets to `gh-pages`; test HTTPS, Web MIDI, SysEx and WebAssembly behavior in a supported browser.
+8. Preserve all upstream authors, licenses and third-party attribution.
+
+## Documentation publication
+
+Use the accompanying **`publish.ps1`** from the documentation ZIP. It validates local branches/remotes, backs up files, stages only the intended documentation and homepage files, commits/pushes `main` and `gh-pages`, updates GitHub About, then edits the existing release notes. It **never flashes the FM-1, edits firmware source, moves the release tag or replaces release binaries**.
