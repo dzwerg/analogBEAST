@@ -74,7 +74,7 @@ def main(pkg, version, out):
         encoding="utf-8")
     for doc in ("LICENSE", "LICENSING.md"):
         shutil.copy(HERE.parent / doc, fw / doc)
-    shutil.copy(HERE / "editor.html", ed / "index.html")
+    (ed / "index.html").write_bytes((HERE / "editor.html").read_bytes().replace(b'href="./installer/" id="abstudio-installer"', b'href="../installer/" id="abstudio-installer"'))
     shutil.copy(HERE / "analogbeast-seq.js", ed / "analogbeast-seq.js")
     for f in ("fukiai.ttf", "FUKIAI-LICENSE.txt", "fm1backup.js"):
         if (HERE / f).exists():
