@@ -85,6 +85,8 @@ static void ed_smp_inval(uint32_t k)
 }
 static int ed_smp_erase(uint32_t k, uint32_t all)  /* header sector, or the whole slot */
 {
+    /* v5 owns slot 3: block all generic sample erasures unconditionally. */
+    if (k == 2u) return -1;
     uint32_t i, took;
     int rc = 0;
     usr_nz[k] = 0;
@@ -101,6 +103,7 @@ static int ed_smp_erase(uint32_t k, uint32_t all)  /* header sector, or the whol
 static int ed_flash_stop(void);
 static int ed_smp_end(uint32_t k, const uint8_t *a, uint32_t na)
 {
+    if (k == 2u) return 1; /* v5 A/B storage, never create an FSMP header */
     const smp_user_hdr_t *h = (const smp_user_hdr_t *)ed_smp_buf;
     if (ed_unpack7(a, na, ed_smp_buf, sizeof(smp_user_hdr_t)) != sizeof(smp_user_hdr_t))
         return 1;
@@ -469,7 +472,11 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         break;
     }
     case ED_INFO:
+#if GOLANA
+        ed_str(AB_BRAND_NAME " " FELUCCA_VERSION, 24);
+#else
         ed_str("FELUCCA " FELUCCA_VERSION, 24);
+#endif
         ed_b(NENGINES);
         ed_b(P_COUNT);
         ed_b(G_COUNT);
@@ -616,7 +623,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
             return;
         off = (uint32_t)a[1] | (uint32_t)a[2] << 7 | (uint32_t)a[3] << 14;
         len = ed_unpack7(a + 4, na - 4u, ed_smp_buf, 256u);
-        if (off < SMP_USER_DATA || (off & 0xFFu) || !len || off + len > SMP_USER_SIZE)
+        if (a[0] == 2u || off < SMP_USER_DATA || (off & 0xFFu) || !len || off + len > SMP_USER_SIZE)
             rc = 1;
         else if (usr_nz[a[0]])
             rc = 4;                                        /* slot in use: SMP_BEGIN first (voices read it) */

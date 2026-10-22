@@ -31,6 +31,10 @@ static void gl_defaults(int16_t *p)
     p[P_DIST] = p[P_CHOR] = p[P_DLY] = 0;
     p[P_REV] = 0;
     p[P_VOICE] = V_POLY;
+    p[P_GLSYNTH] = 0;                       /* factory sounds use MIKROKORG */
+    p[P_GLBRUTE] = 0;                     /* no feedback on all factory sounds */
+    p[P_GLSPMODE] = 0;                   /* new/old BRUTE sounds default to LP */
+    p[P_GLBULTRA] = p[P_GLBPWM] = p[P_GLBMETAL] = p[P_GLB_SUB] = 0; /* off on legacy sounds */
     p[P_GLMODE] = 1;                    /* portamento: a time, as the original */
     p[P_GLIDE] = 0;
     p[P_DETUNE] = 30;

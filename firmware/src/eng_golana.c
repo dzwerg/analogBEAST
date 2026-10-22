@@ -96,6 +96,8 @@ static const param_desc_t GOL_TP[P_COUNT] = {
 typedef struct {
     int32_t f1, f2, f3, f4;      /* the filter: stage 1 (LPF24's first), stage 2 */
     int32_t feg;                 /* filter EG, Q24 */
+    int32_t brute_fb;            /* one-sample VCA -> filter input feedback, per voice */
+    uint32_t ua, ub;             /* independent detuned ULTRASAW phases */
     uint32_t l1, l2;             /* LFO phases */
     int32_t s1, s2;              /* their S&H values, Q15 */
     int32_t nst;                 /* noise */
@@ -183,6 +185,8 @@ static void gol_note_on(track_t *t, voice_t *v)
     if (fresh) {
         s->f1 = s->f2 = s->f3 = s->f4 = 0;
         s->feg = 0;
+        s->brute_fb = 0;
+        s->ua = s->ub = 0;
         s->jl = 0;
         v->ph[0] = 0;
         v->ph[1] = 0x40000000u;
@@ -240,6 +244,23 @@ static inline int32_t gl_osc2(uint32_t w, uint32_t ph, uint32_t inc)
     return w == 1u ? osc_pulse(ph, inc, 0x80000000u) : w == 2u ? osc_tri(ph) : osc_saw(ph, inc);
 }
 
+/* Steiner-Parker-inspired *digital* 2-pole filter, not a circuit-level diode model.
+ * Trapezoidal SVF core: LP/BP/HP taps, soft-saturated integrator feedback and input.
+ * Both integration states stay bounded even at maximum resonance + Brute Factor.
+ * Unlike the MIKROKORG SVF it is intentionally nonlinear; MIDI/FX are not fed back.
+ * Input is Q15-ish, coefficients are Q13, resonance damping k is Q12. */
+static inline int32_t gl_steiner(const tsvf_t *c, int32_t k, int32_t in,
+                                 int32_t *ic1, int32_t *ic2, uint32_t mode)
+{
+    int32_t x = softclip(clamp(in * 2, -65535, 65535)) >> 1;
+    int32_t v3 = x - *ic2;
+    int32_t v1 = (c->a1 * *ic1 + c->a2 * v3) >> 13;
+    int32_t v2 = *ic2 + ((c->a2 * *ic1 + c->a3 * v3) >> 13);
+    *ic1 = softclip(clamp(2 * v1 - *ic1, -65535, 65535)); /* nonlinear BP feedback */
+    *ic2 = clamp(2 * v2 - *ic2, -65535, 65535);
+    return mode == 0u ? v2 : mode == 1u ? v1 : x - ((k * v1) >> 12) - v2;
+}
+
 static void gol_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
     glp_t *g = gl_part(t);
@@ -249,10 +270,18 @@ static void gol_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
     uint32_t md = (uint32_t)gp(t, GL_O2MOD, 0, 3), ft = (uint32_t)gp(t, GL_FTYPE, 0, 4), k, i;
     int32_t feg, lfo1, lfo2, src[GS_N], d[GD_N], ctrl1, cut, reso, x1, x2, xn, gain;
     int32_t pitch1, pitch2, fold;
-    uint32_t inc1, inc2;
+    uint32_t inc1, inc2, uinc_a, uinc_b;
     tsvf_t f1c, f2c;
     int32_t k2, ring = md == GM_RING || md == GM_RSYNC, sync = md == GM_SYNC || md == GM_RSYNC;
     int32_t dist = p[GL_DIST] != 0;
+    /* BRUTE FACTOR does not touch MIKROKORG; zero is a strict audio bypass. */
+    int32_t bf = p[P_GLSYNTH] == 1 ? gp(t, P_GLBRUTE, 0, 127) : 0;
+    int32_t sp_mode = p[P_GLSYNTH] == 1 ? gp(t, P_GLSPMODE, 0, 2) : -1;
+    int32_t is_brute = p[P_GLSYNTH] == 1;
+    int32_t ultra = is_brute ? gp(t, P_GLBULTRA, 0, 127) : 0;
+    int32_t pwm = is_brute ? gp(t, P_GLBPWM, 0, 127) : 0;
+    int32_t metal = is_brute ? gp(t, P_GLBMETAL, 0, 127) : 0;
+    int32_t submix = is_brute ? gp(t, P_GLB_SUB, 0, 127) * 258 : 0;
     /* control rate: the envelopes, the LFOs, the patch */
     feg = gl_feg_tick(t, v, s);
     for (k = 0; k < GD_N; k++)
@@ -287,6 +316,13 @@ static void gol_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
     /* UNISON: OSC 2 detuned the other way from OSC 1 (each voice two detuned oscillators: 8 for 4 voices) */
     inc2 = cents_inc(clamp(pitch2, 0, 2047), gp(t, GL_O2TUNE, -63, 63),
                      t->p[P_VOICE] == V_UNISON ? m->fine - 2 * v->fine : m->fine);
+    if (is_brute) {
+        /* Existing OSC2 phase doubles as BRUTE sub (-2/-1 oct) or overtone (+1/+2 oct). */
+        int32_t oct = gp(t, GL_O2MOD, 0, 3);
+        int32_t offset = oct == 0 ? -12 : oct == 1 ? -24 : oct == 2 ? 12 : 24;
+        int32_t ps = pitch1 + (offset + gp(t, GL_O2SEMI, -24, 24)) * 16;
+        inc2 = cents_inc(clamp(ps, 0, 2047), gp(t, GL_O2TUNE, -63, 63), m->fine);
+    }
     if (inc1 > 0x40000000u)
         inc1 = 0x40000000u;
     if (inc2 > 0x40000000u)
@@ -309,15 +345,49 @@ static void gol_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
         tsvf_coef_k(&f1c, cut, 8192 - reso * 8140 / 127);   /* MS20: up to a ringing, near self-oscillating peak */
     fold = gp(t, GL_FOLD, 0, 127) ? 4096 + gp(t, GL_FOLD, 0, 127) * 230 : 0;   /* FOLD: the gain into the folds, Q12 */
     gain = clamp(32767 + (d[GD_AMP] >> 6), 0, 49151);  /* AMP: the patch's gain, up to 1.5 */
+    uinc_a = uinc_b = inc1;
+    if (ultra && x1) {
+        int32_t cents = 2 + (ultra * 28) / 127;  /* up to ~30 cents spread */
+        uinc_a = cents_inc(clamp(pitch1, 0, 2047), -cents, m->fine);
+        uinc_b = cents_inc(clamp(pitch1, 0, 2047), cents, m->fine);
+    }
     {
-        uint32_t ph0 = v->ph[0], ph1 = v->ph[1], pw;
+        uint32_t ph0 = v->ph[0], ph1 = v->ph[1], pw, ua = s->ua, ub = s->ub;
         int32_t a1 = s->f1, a2 = s->f2, b1 = s->f3, b2 = s->f4, nst = s->nst, jl = s->jl;
+        int32_t fb = bf ? s->brute_fb : 0;
         int32_t xm = ctrl1 * 380;                       /* SINE: the cross modulation's depth (phase, Q16 of a cycle) */
         int32_t tfold = 32768 + ctrl1 * 768;            /* TRI: the fold's gain, Q15 (1 .. 4) */
         int32_t oct = ctrl1 * 129;                      /* SAW: the octave-up saw's share */
         pw = 0x80000000u + (uint32_t)ctrl1 * 0xF00000u; /* PULSE: 50 % .. ~6 % */
+        if (is_brute) pw = 0x80000000u + (uint32_t)pwm * 0xC00000u; /* 50 % .. ~87 % */
         for (i = 0; i < n; i++) {
             int32_t o1, o2, sx, y;
+            if (is_brute) {
+                int32_t saw = x1 ? osc_saw(ph0, inc1) : 0;
+                int32_t pulse = x2 ? osc_pulse(ph0, inc1, pw) : 0;
+                int32_t tri = xn ? osc_tri(ph0) : 0;
+                if (x1 && ultra) { /* two independent, slightly detuned band-limited saws */
+                    int32_t layered = (2 * saw + osc_saw(ua, uinc_a) + osc_saw(ub, uinc_b)) >> 2;
+                    saw += mulq15(layered - saw, ultra * 258);
+                }
+                if (xn && metal) { /* folding triangle, original Golana fixed-point algorithm */
+                    int32_t drive = 32768 + metal * 768;
+                    int32_t u = (tri * (drive >> 4)) >> 11;
+                    u = (int32_t)((uint32_t)(u + 32768) & 0x1FFFFu);
+                    tri = u < 65536 ? u - 32768 : 98303 - u;
+                }
+                sx = mulq15(saw, x1) + mulq15(pulse, x2) + mulq15(tri, xn);
+                if (submix) {
+                    uint32_t shape = (uint32_t)gp(t, GL_O2WAVE, 0, 2);
+                    int32_t sub = shape == 0u ? osc_pulse(ph1, inc2, 0x80000000u) :
+                                  shape == 1u ? osc_saw(ph1, inc2) : osc_tri(ph1);
+                    sx += mulq15(sub, submix);
+                }
+                ph0 += inc1;
+                ph1 += inc2;
+                ua += uinc_a;
+                ub += uinc_b;
+            } else {
             /* OSC 2 first (SINE's cross modulation reads it); its sync restart rounded as in ANALOG's */
             if (sync && w2 == 0u) {
                 int32_t bl = blep(ph1, inc2);
@@ -364,6 +434,7 @@ static void gol_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
             sx = mulq15(o1, x1) + mulq15(o2, x2);
             if (xn)
                 sx += mulq15((int32_t)(noise32(&nst) >> 17) - 16384, xn);
+            } /* END untouched MIKROKORG oscillator */
             sx = (sx * 3) >> 3;                         /* one oscillator ~12 k into the filter, all three ~32 k */
             if (fold) {                                 /* FOLD: the wave reflected at +-16384, more folds the harder */
                 int32_t u = (clamp(sx, -65535, 65535) * (fold >> 2)) >> 10;
@@ -371,6 +442,17 @@ static void gol_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
                 u = 16384 - (u < 0 ? -u : u);
                 sx = u + (u >> 2);                      /* (x 1.25: about the level it came in at) */
             }
+            /* One-sample internal VCA feedback, with bounded input saturation.
+             * Amount 0 = bit-identical Golana processing; maximum about 3x feedback.
+             * The limiter prevents runaway and softclips the reinjection, not
+             * the final speaker signal. Effects do not enter this loop. */
+            if (bf) {
+                int32_t injection = (fb * (bf * 3)) >> 7;
+                sx = softclip(clamp(sx + injection, -131070, 131070));
+            }
+            if (sp_mode >= 0) {
+                y = gl_steiner(&f2c, k2, sx, &b1, &b2, (uint32_t)sp_mode);
+            } else {
             switch (ft) {
             case 0:
                 y = tsvf_lp(&f1c, sx, &a1, &a2);
@@ -395,12 +477,19 @@ static void gol_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
                 y = tsvf_lp(&f2c, sx, &b1, &b2);
                 break;
             }
+            }
             y = soft_knee(y, 16000) << 1;
             if (dist)
                 y = softclip(clamp(y, -32767, 32767) * 4);
             if (gain != 32767)
                 y = mulq15(y, gain);
-            out[i] += voice_amp(clamp(y, -65535, 65535), m, i) << 1;
+            if (bf) {
+                int32_t amp = voice_amp(clamp(y, -65535, 65535), m, i);
+                fb = clamp(amp * 2, -32767, 32767); /* VCA output, prior to FX */
+                out[i] += amp << 1;
+            } else {
+                out[i] += voice_amp(clamp(y, -65535, 65535), m, i) << 1;
+            }
         }
         v->ph[0] = ph0;
         v->ph[1] = ph1;
@@ -410,6 +499,9 @@ static void gol_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
         s->f4 = b2;
         s->nst = nst;
         s->jl = jl;
+        s->ua = ua;
+        s->ub = ub;
+        s->brute_fb = bf ? fb : 0;
     }
 }
 

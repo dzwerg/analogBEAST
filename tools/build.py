@@ -49,7 +49,7 @@ SDK_SHA256 = {
     "cfg/eq_cfg_hw.bin": "41167491bffed4651750719c973d2758adeb9021a5670d02d6a53c85ed80ea7d",
 }
 
-PRODUCT = "FM-1_900"                # package identity; release builds are FM-1_9XY
+PRODUCT = "FM-1_901"                # package identity; release builds are FM-1_9XY
 VERSION = None                      # FELUCCA_VERSION for release builds (default: firmware/src/felucca.c)
 
 
@@ -369,6 +369,13 @@ def main():
         raise SystemExit("build: checks failed")
     pkg = fm1pkg_make.ufw(fm1pkg_make.flash_image(img, fm1pkg_make.KEY), ota, PRODUCT)
     (OUT / name).write_bytes(pkg)
+    if not a.release:
+        # Brand the normal firmware artifact WITHOUT --release (which changes FM-1_901 to FM-1_910).
+        if PRODUCT != "FM-1_901":
+            raise SystemExit("analogBEAST: unexpected OTA identity; refusing branded artifact")
+        branded = OUT / "analogBEAST-v1.0.fwsc"
+        branded.write_bytes(pkg)
+        print(f"branded  {branded}  {len(pkg)} B, identity {PRODUCT}")
     att = SRC / "assets" / "samples-cc0" / "ATTRIBUTION.txt"
     if att.exists():
         shutil.copy(att, OUT / "ATTRIBUTION.txt")

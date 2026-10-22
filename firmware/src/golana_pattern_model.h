@@ -1,67 +1,47 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Golana DZ: hardware-independent pattern and song data model.
- * This module is intentionally not wired to the flash or audio ISR yet.
+ * analogBEAST v4: 64 independent patterns, 64 steps per pattern,
+ * 256 Arranger entries. Persistent wire format in analogbeast_snapshot.c.
  */
 #ifndef GOLANA_PATTERN_MODEL_H
 #define GOLANA_PATTERN_MODEL_H
-#include <stdint.h>
-
-#define DZ_NBANK 4u
-#define DZ_NPAT_PER_BANK 16u
-#define DZ_NPAT (DZ_NBANK * DZ_NPAT_PER_BANK)
-#define DZ_NSTEP 64u
-#define DZ_NSONG 64u
-/* An END row is encoded in existing bank/pattern bytes: NO format growth. */
-#define DZ_SONG_END_BANK DZ_NBANK
+#include "analogbeast_snapshot.h"
+#define DZ_NBANK AB_BANKS
+#define DZ_NPAT_PER_BANK AB_PATTERNS_PER_BANK
+#define DZ_NPAT AB_PATTERNS
+#define DZ_NSTEP AB_STEPS
+#define DZ_NSONG AB_SONG_ROWS
+#define DZ_SONG_END_BANK AB_SONG_END
+#define DZ_SONG_TEMPO AB_SONG_TEMPO
+#define DZ_SONG_PRESET AB_SONG_PRESET
+#define DZ_SONG_REST AB_SONG_REST
+#define DZ_SONG_ARP AB_SONG_ARP
 #define DZ_SONG_END_PATTERN DZ_NPAT_PER_BANK
+#define DZ_TEMPO_MIN 40u
+#define DZ_TEMPO_MAX 240u
+#define DZ_PRESET_COUNT 32u
+
+typedef ab_step_t dz_pattern_step_t;
+typedef ab_pattern_t dz_pattern_t;
+typedef ab_song_row_t dz_song_entry_t;
+typedef ab_snapshot_t dz_seq_model_t;
 
 typedef struct {
-    uint8_t note;                         /* MIDI note 0..127, 0=rest */
-    uint8_t flags;                        /* NOTE/TIE/ACCENT/SLIDE, encoded as in Golana */
-} dz_pattern_step_t;
-
-typedef struct {
-    uint8_t length;                       /* 1..64, independent of the sound preset */
-    dz_pattern_step_t step[DZ_NSTEP];
-} dz_pattern_t;
-
-typedef struct {
-    uint8_t bank;                         /* 0..3 (A..D), 4 = END */
-    uint8_t pattern;                      /* 0..15 (01..16), 16 = END */
-    uint8_t play_steps;                   /* 1..64, this song occurrence's length */
-} dz_song_entry_t;
-
-typedef struct {
-    uint8_t bank;                         /* current BANK/PATTERN selection */
-    uint8_t pattern;
-    uint8_t song_mode;                    /* OFF: selected pattern, ON: arranged song */
-    uint8_t loop_mode;                    /* ONCE (0) / LOOP (1) */
-    uint8_t song_step;                    /* SONG editing cursor; moving it DOES NOT extend the song */
-    uint8_t song_count;                   /* highest edited song step, initially 1 */
-    dz_pattern_t patterns[DZ_NPAT];
-    dz_song_entry_t song[DZ_NSONG];
-} dz_seq_model_t;
-
-typedef struct {
-    uint8_t song_mode;                    /* snapshot of mode at PLAY */
-    uint8_t loop_mode;
-    uint8_t song_step;
-    uint8_t running;
-    uint8_t bank;
-    uint8_t pattern;
-    uint8_t play_steps;
+    uint8_t song_mode, loop_mode, running;
+    uint16_t song_step;
+    uint8_t bank, pattern, play_steps;
+    uint8_t rest, tempo_changed, preset_changed, arp_changed;
+    uint8_t tempo, preset, arp_on;
 } dz_seq_playback_t;
 
 void dz_seq_model_init(dz_seq_model_t *m);
 uint8_t dz_seq_pat_index(uint8_t bank, uint8_t pattern);
 void dz_seq_select_pattern(dz_seq_model_t *m, uint8_t bank, uint8_t pattern);
-void dz_seq_select_song_step(dz_seq_model_t *m, uint8_t step);
-/* Canonical END row: bank=4 AND pattern=16; no sound is played. */
+void dz_seq_select_song_step(dz_seq_model_t *m, uint16_t step);
 int dz_seq_song_is_end(const dz_song_entry_t *e);
 void dz_seq_set_song_bank(dz_seq_model_t *m, uint8_t bank);
 void dz_seq_set_song_pattern(dz_seq_model_t *m, uint8_t pattern);
+void dz_seq_set_song_value(dz_seq_model_t *m, uint8_t value);
 void dz_seq_set_song_steps(dz_seq_model_t *m, uint8_t count);
 void dz_seq_play_start(const dz_seq_model_t *m, dz_seq_playback_t *p);
-/* Called at the end of the current pattern. Returns 1 if a new cycle starts, 0 to stop. */
 int dz_seq_play_next(const dz_seq_model_t *m, dz_seq_playback_t *p);
 #endif

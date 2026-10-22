@@ -46,6 +46,8 @@ static const char *const N_QUANT[] = {"OFF", "SNAP", "WHITE", "SEQ"};
 static const char *const N_CHRD[] = {"OFF", "DIA3", "DIA7", "MAJ", "MIN", "DOM7", "MAJ7", "MIN7", "SUS4", "POW"};
 static const char *const N_VOIC[] = {"CLOSE", "OPEN", "INV1", "INV2", "+OCT"};   /* VC_CLOSE .. VC_BASS */
 static const char *const N_VOICE[] = {"POLY", "MONO", "LEG", "UNI"};   /* V_POLY .. V_UNISON */
+static const char *const N_GLSPMODE[] = {"LP", "BP", "HP"};
+static const char *const N_GLSYNTH[] = {"MIKROKORG", "BRUTE"};
 static const char *const N_GLMODE[] = {"RATE", "TIME"};
 static const char *const N_PRIO[] = {"LAST", "LOW", "HIGH"};
 static const char *const N_ALLOC[] = {"ROT", "REUSE"};
@@ -174,6 +176,13 @@ static const param_desc_t TP[P_COUNT] = {
     [P_IMIX] = PD("MIX", F_PCT, 0, 127, 127),
     [P_FTYPE] = PE("TYPE", N_FTYPE, 0),           /* 1.5 (#104): ANALOG's filter, LP = as before (eng_analog.c) */
     [P_ESYNC] = PE("ESYNC", N_ONOFF, 0),          /* 1.5 (#175): OFF = ATK DEC REL in ms, as before (voice.c esync) */
+    [P_GLSYNTH] = PE("SYNTH", N_GLSYNTH, 0),   /* old presets default MIKROKORG */
+    [P_GLBRUTE] = PD("BFACT", F_PCT, 0, 127, 0),
+    [P_GLSPMODE] = PE("SPMODE", N_GLSPMODE, 0),
+    [P_GLBULTRA] = PD("ULTRA", F_PCT, 0, 127, 0),
+    [P_GLBPWM] = PD("PWM", F_PCT, 0, 127, 0),
+    [P_GLBMETAL] = PD("METAL", F_PCT, 0, 127, 0),
+    [P_GLB_SUB] = PD("SUB", F_PCT, 0, 127, 0),
 };
 
 /* the INSERT's A B C as its TYPE means them (TP's ranges and defaults): the drives DRIVE TONE LEVEL, CRUSH BITS RATE

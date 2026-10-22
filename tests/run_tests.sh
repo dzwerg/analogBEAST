@@ -283,6 +283,14 @@ if [ -f build/gen/felucca_tables.h ]; then
     mkdir -p build/ui_fm4/ppm build/ui_fm4_slot
     run "UI renders with FELUCCA_FM4=1: DIGITAL's screens (EDIT, OP ENV, the 8 algorithm charts), lint, GREY gray, MONO neutral" \
         "$OUT/ui_render_fm4" build/ui_fm4 build/ui_fm4_slot
+    $CC $G1 -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/minibrute_synth_mode" tests/minibrute_synth_mode.c -lm
+    run "miniBRUTE per-preset SYNTH MODE, mono and legacy records" "$OUT/minibrute_synth_mode"
+    $CC $G1 -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/minibrute_brute_factor" tests/minibrute_brute_factor.c -lm
+    run "miniBRUTE BRUTE FACTOR feedback, DSP bypass, NOR and legacy presets" "$OUT/minibrute_brute_factor"
+    $CC $G1 -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/minibrute_steiner" tests/minibrute_steiner.c -lm
+    run "miniBRUTE Steiner LP/BP/HP, DSP isolation and legacy presets" "$OUT/minibrute_steiner"
+    $CC $G1 -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/minibrute_osc" tests/minibrute_osc.c -lm
+    run "miniBRUTE Brute oscillator Ultrasaw PWM Metalizer Sub" "$OUT/minibrute_osc"
     $CC $G1 -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/golana_sim" tests/golana_sim.c -lm
     mkdir -p build/golana_sim
     run "GOLANA on the simulated FM-1: pages, keys, ARP, PRESETS, WRITE (and STOP TO SAVE), CC74 / CC71, the sequencer" \

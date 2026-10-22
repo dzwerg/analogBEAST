@@ -163,6 +163,9 @@ static void lcd_init(void) {}
 #include "../../firmware/src/menu_items.c"
 #include "../../firmware/src/icons.c"
 #include "../../firmware/src/ui_graph.c"
+#ifndef AB_BRAND_NAME
+#define AB_BRAND_NAME "analogBEAST"
+#endif
 #include "../../firmware/src/ui_draw.c"
 #include "../../firmware/src/ui_menu.c"
 #include "../../firmware/src/ui_input.c"
@@ -214,6 +217,7 @@ static void fl_plain_window_init(void) {}
 #include "../../firmware/src/upreset.c"
 #if GOLANA
 #include "../../firmware/src/golana_ext.c"
+#include "../../firmware/src/analogbeast_snapshot.c"
 #include "../../firmware/src/golana_pattern_model.c"
 #endif
 #include "../../firmware/src/project.c"
@@ -256,6 +260,10 @@ static void cdc_task(void) {}
 #define usb_detach() ((void)0)
 #include "../../firmware/src/master.c"
 #if GOLANA
+#include "../../firmware/src/analogbeast_v5_extra.c"
+#include "../../firmware/src/analogbeast_v5_controls.c"
+#include "../../firmware/src/analogbeast_v5_nor.c"
+#include "../../firmware/src/analogbeast_v5_runtime.c"
 #include "../../firmware/src/golana_ui.c"
 #include "../../firmware/src/golana_dz_midi.c"
 #endif

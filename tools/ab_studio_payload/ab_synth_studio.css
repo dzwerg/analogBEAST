@@ -1,0 +1,64 @@
+/* analogBEAST Studio. Scoped where possible so the existing Felucca subeditors
+   and the independent analogBEAST piano-roll keep their own functionality. */
+:root,
+:root[data-theme="dark"] {
+ --bg:#0c0e13; --fg:#eef1f5; --dim:#a7afbd; --line:#303541;
+ --ab-primary:#ed8a24; --ab-surface:#181d26; --ab-border:#313845;
+ color-scheme:dark;
+}
+body { background:var(--bg); font-family: system-ui, -apple-system, 'Segoe UI', Arial, sans-serif; }
+main { max-width:1440px; padding:20px clamp(12px,3vw,36px) 48px; }
+h1 { font-size:clamp(23px,2.7vw,34px); color:#f8a347; letter-spacing:.025em; }
+.top { background:rgba(12,14,19,.98); border:1px solid #272c36; border-radius:12px;
+       padding:10px 12px 0; box-shadow:0 9px 22px #0006; }
+#status { color:#cdd4dc; }
+button, .seg button,button.tog { cursor:pointer; border-radius:6px; }
+button { background:#29313d; color:#f4f4f5; border:1px solid #3e4755; padding:6px 11px; }
+button:hover:not(:disabled) { border-color:var(--ab-primary); }
+button:focus-visible,select:focus-visible,input:focus-visible { outline:2px solid var(--ab-primary);outline-offset:2px; }
+#connect { background:var(--ab-primary);border-color:#ffb363;color:#151719;font-weight:700; }
+#version { color:#f0a447;font-weight:700; }
+.tabs { border-color:#3a404b; gap:4px; padding-top:4px; }
+.tabs button { border-radius:6px 6px 0 0;color:#aeb7c5;padding:8px 13px; }
+.tabs button[aria-selected="true"] { background:var(--ab-primary);color:#121316;font-weight:700; }
+.tabs button:hover { color:#fff; }
+#trackbar { border-color:#38404d; }
+.seg button[aria-pressed="true"],button.tog[aria-pressed="true"] { background:var(--ab-primary); color:#151719;border-color:var(--ab-primary); }
+select,input[type=text],input[type=number],input[type=search] { background:#11151c; color:#edf1f6;
+ border:1px solid #424b5b;border-radius:6px;padding:5px 7px; }
+input[type=range],input[type=checkbox] { accent-color:var(--ab-primary); }
+.browser { background:#151a22;border:1px solid #303845;border-radius:12px;
+           padding:16px;gap:16px;margin:10px 0; }
+.browser select[size] { min-width:220px; max-width:min(100%,400px); }
+.groups#ab-impossible { display:none; }
+#p-sound .groups { columns:auto;display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px;align-items:start; }
+.ab-studio-panel { break-inside:avoid;border:1px solid #333b48;border-radius:12px;
+  padding:15px;background:#171c25;min-height:120px; }
+.ab-studio-panel h2 { margin:0;border-bottom:1px solid #373f4d; padding-bottom:9px;
+ font-size:13px;color:#ffb461;letter-spacing:.025em;font-weight:760; }
+.ab-studio-panel .ab-subtle { margin:8px 0 12px;min-height:2.2em;
+ font-size:11px;line-height:1.45;color:#9ca8b9; }
+.ab-studio-panel .row { grid-template-columns:minmax(62px,88px) minmax(65px,1fr) minmax(46px,79px);
+ gap:7px;min-height:32px; }
+.ab-studio-panel .row>span:first-child {font-size:11px;color:#d2d9e2;overflow-wrap:anywhere;}
+.ab-studio-panel .row .v {font-size:11px;font-variant-numeric:tabular-nums;color:#ffbc7d;}
+.ab-studio-panel .row select { min-width:0; }
+.ab-studio-panel.ab-brute {border-color:#a66828;box-shadow:inset 0 3px 0 #e68c27;}
+.ab-studio-panel.ab-filter {border-color:#555d68;}
+.ab-studio-panel.ab-advanced {grid-column:1 / -1;}
+.ab-studio-panel.ab-advanced .row {max-width:680px;}
+#abstudio-hero { display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;
+ margin:12px 0;background:linear-gradient(110deg,#272017,#161b23 65%);
+ border:1px solid #514029;padding:15px 18px;border-radius:12px; }
+#abstudio-hero h2 {color:#ffb45d;font-size:17px;border:none;padding:0;margin-bottom:5px;}
+#abstudio-hero p {color:#b6c0cc;font-size:12px;margin:2px 0;}
+#abstudio-hero .ab-actions {display:flex;flex-wrap:wrap;gap:8px;}
+#abstudio-hero .ab-actions a {background:#252b35;border:1px solid #5e4832;border-radius:7px;
+ color:#ffd09a;text-decoration:none;padding:9px 12px;font-weight:700;}
+#abstudio-hero .ab-actions a:hover {background:#5b3e23;}
+#abstudio-device {display:inline-block;color:#87d9af;font-size:11px;margin-top:5px;}
+#p-settings .groups,#p-sequencer .groups {columns:300px;}
+#p-settings .group,#p-sequencer .group {padding:12px;border-radius:10px;border:1px solid #303845;background:#171c25;}
+.list, .strip {border-color:#343c48;}
+footer {padding:18px 0;color:#9ca7b5;}
+@media(max-width:600px){ .top{position:static;} .ab-studio-panel{padding:11px;} #p-sound .groups{grid-template-columns:1fr;} }

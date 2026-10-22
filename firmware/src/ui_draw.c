@@ -1231,7 +1231,7 @@ static void draw_columns(void)
 #define SPL_PAD 16                                  /* the text's inset: left (its ink), top and bottom (the capitals) */
 #define SPL_PITCH 20                                /* line to line */
 #if GOLANA
-static const char *const SPLASH_LINES[] = {"Golana", FELUCCA_VERSION, "by Gadlele", "based on Felucca"};
+static const char *const SPLASH_LINES[] = {AB_BRAND_NAME, FELUCCA_VERSION, "by Gadlele", "based on Felucca"};
 #else
 static const char *const SPLASH_LINES[] = {"Felucca", FELUCCA_VERSION, "H\xFCgelton Instruments", "with community"};
 #endif

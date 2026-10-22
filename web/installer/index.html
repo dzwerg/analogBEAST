@@ -1,0 +1,13 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>analogBEAST Installer · Lokal</title>
+<style>body{background:#0d1016;color:#e9eef5;font:16px/1.6 system-ui;margin:5vw auto;max-width:760px;padding:0 16px}
+h1{color:#f5a14c}main{background:#1a202a;padding:26px;border:1px solid #39414d;border-radius:12px}
+code,pre{background:#10151d;padding:5px;border-radius:5px;color:#ffcc91;overflow:auto}a{color:#ffc18a}</style></head>
+<body><main><h1>analogBEAST v1.0 · Installer</h1>
+<p>Du befindest dich im <strong>lokalen Quell-Webserver</strong>. Der vollständige OTA-Installer wird vom offiziellen Projekt-Buildskript als Release-Site generiert. Diese Seite verhindert einen irreführenden 404-Fehler; sie führt <strong>keinen</strong> Flash durch.</p>
+<p>Am PC kannst du das geprüfte Firmwarepaket weiterhin über PowerShell installieren:</p>
+<pre>cd C:\FM1\analogBEAST
+py tools\fm1_install.py ".\build\analogBEAST-v1.0.fwsc" --port "analogBEAST 3"</pre>
+<p>Für den GitHub-Pages-Release-Installer die Site mit <code>web/make_site.py</code> erzeugen und aus dem generierten Verzeichnis hosten. Im veröffentlichten Paket führt der Installer-Link direkt zur vollständigen Web-OTA-Seite.</p>
+<p><a href="../editor.html#sound">← Zurück zum Synth-Editor</a></p></main></body></html>

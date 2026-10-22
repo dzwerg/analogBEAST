@@ -16,6 +16,9 @@ enum { GG_NONE, GG_HOME, GG_OSC1, GG_OSC2, GG_FILT, GG_FEG, GG_AEG, GG_LFO1, GG_
 
 static uint32_t gu_graph_of(const gu_page_t *pg)
 {
+    if (gu_t()->p[P_GLSYNTH] == 1 &&
+        (pg->k[0].id == GL_O1WAVE || pg->k[0].id == GL_O2WAVE))
+        return GG_NONE; /* do not draw the old OSC waveform for the new 4-wave mix */
     switch (pg->k[0].id) {
     case GL_CUTOFF: return pg->btn == B_HOME ? GG_HOME : GG_NONE;
     case GL_O1WAVE: return GG_OSC1;
@@ -210,7 +213,10 @@ static void gu_filter(int32_t w, int32_t h, uint16_t acc, uint16_t surf)
 {
     const int16_t *p = gu_t()->p;
     int16_t y[224];
-    int32_t ft = clamp(p[GL_FTYPE], 0, 4), cut = clamp(p[GL_CUTOFF], 0, 127), res = clamp(p[GL_RESO], 0, 127);
+    int32_t ft = p[P_GLSYNTH] == 1
+        ? clamp(p[P_GLSPMODE], 0, 2) + 1  /* map LP/BP/HP to the plot below */
+        : clamp(p[GL_FTYPE], 0, 4);
+    int32_t cut = clamp(p[GL_CUTOFF], 0, 127), res = clamp(p[GL_RESO], 0, 127);
     int32_t xc = cut * 223 / 127, i, top = 8, zero = top + 18;   /* 0 dB at zero; 1 px = 1 dB */
     int32_t peak = ft == 4 ? res * res / 420 : res * res / 640;  /* the resonance, dB */
     int32_t slope = ft == 0 ? 24 : 12;                  /* dB per octave; 26.6 px an octave */
@@ -304,7 +310,7 @@ static void gu_draw_graph(uint32_t g)
     int32_t h = gu_graph_h(g), w = 240;
     uint16_t acc = gu_btn_col(GU_PAGES[gu.page].btn), surf = GC_SURF;
     uint32_t sig = 0x811C9DC5u, live = g == GG_HOME || g == GG_LFO1 || g == GG_LFO2, i;
-    static const uint8_t IDS[] = {GL_O1WAVE, GL_O1C1, GL_O2WAVE, GL_O2MOD, GL_O2SEMI, GL_FTYPE, GL_CUTOFF, GL_RESO,
+    static const uint8_t IDS[] = {GL_O1WAVE, GL_O1C1, GL_O2WAVE, GL_O2MOD, GL_O2SEMI, GL_FTYPE, P_GLSYNTH, P_GLSPMODE, GL_CUTOFF, GL_RESO,
                                   GL_FA, GL_FD, GL_FS, GL_FR, P_ATK, P_DEC, P_SUS, P_REL, GL_L1WAVE, GL_L1FREQ, GL_L1SYNC,
                                   GL_L2WAVE, GL_L2FREQ, GL_L2SYNC};
     gu_frame++;
@@ -344,10 +350,18 @@ static const uint32_t GSP_STRIPE[5] = {0xFFB547, 0xFF805C, 0xECD660, 0xF07A9C, 0
 #define GSP_BG 0x0E1118u
 #define GSP_TEXT 0xE8E6E1u
 #define GSP_MID 0x969CACu
-static const uint8_t GSP_GLYPH[6][7] = {                /* G O L A N A, 5 x 7 (bit 4 the left column) */
-    {0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0F}, {0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E},
-    {0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F}, {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11},
-    {0x11, 0x19, 0x15, 0x15, 0x13, 0x11, 0x11}, {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11},
+static const uint8_t GSP_GLYPH[11][7] = {      /* analogBEAST */
+    {0x00, 0x00, 0x0E, 0x01, 0x0F, 0x11, 0x0F}, /* a */
+    {0x00, 0x00, 0x1E, 0x11, 0x11, 0x11, 0x11}, /* n */
+    {0x00, 0x00, 0x0E, 0x01, 0x0F, 0x11, 0x0F}, /* a */
+    {0x0C, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E}, /* l */
+    {0x00, 0x00, 0x0E, 0x11, 0x11, 0x11, 0x0E}, /* o */
+    {0x00, 0x00, 0x0F, 0x11, 0x0F, 0x01, 0x0E}, /* g */
+    {0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E}, /* B */
+    {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F}, /* E */
+    {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11}, /* A */
+    {0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E}, /* S */
+    {0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04}, /* T */
 };
 static uint16_t gsp_rgb(uint32_t c) { return RGB((c >> 16) & 255u, (c >> 8) & 255u, c & 255u); }
 static uint16_t gsp_mix(uint32_t a, uint32_t b, int32_t k)   /* a .. b, k 0..1000 */
@@ -380,21 +394,21 @@ static void gsp_draw(int32_t t)
             cv_rect(0, y + (fy - y) * frame / 1000, 240, th < 2 ? 2 : th, c);
         }
     }
-    if (t > 900) {                                      /* GOLANA: 6 x 6 px blocks (5 lit), 36 px a letter, from 15, 75 */
+    if (t > 900) {                                      /* analogBEAST: 11 letters, 3 px pixel spacing */
         int32_t sweep = t < 1500 ? -30 : t > 2000 ? 400 : (t - 1500) * 300 / 500 - 30, k, x, y;
-        for (k = 0; k < 6; k++)
+        for (k = 0; k < 11; k++)
             for (y = 0; y < 7; y++)
                 for (x = 0; x < 5; x++) {
-                    int32_t px = 15 + k * 36 + x * 6, d = px - sweep;
+                    int32_t px = 10 + k * 20 + x * 3, d = px - sweep;
                     if (!((GSP_GLYPH[k][y] >> (4 - x)) & 1u) || px > wipe)
                         continue;
                     /* silver until the glint (a white band, 14 px each side) has passed over it, then the text's */
-                    cv_rect(px, 75 + y * 6, 5, 5, d > -14 && d < 14 ? gsp_mix(GSP_TEXT, 0xFFFFFFu, 1000 - (d < 0 ? -d : d) * 1000 / 14)
+                    cv_rect(px, 75 + y * 6, 3, 5, d > -14 && d < 14 ? gsp_mix(GSP_TEXT, 0xFFFFFFu, 1000 - (d < 0 ? -d : d) * 1000 / 14)
                                                   : d >= 14 ? gsp_mix(GSP_TEXT, GSP_BG, 420) : gsp_rgb(GSP_TEXT));
                 }
     }
     if (t > 2300) {                                     /* the version, faded in under the name */
-        static const char V[] = FELUCCA_VERSION " \xB7 by Gadlele";
+        static const char V[] = "analogBEAST \xB7 by datenzwerg";
         cv_text(120 - text_w(&AF_S, V) / 2, 128, &AF_S, V, gsp_mix(GSP_BG, GSP_MID, gsp_ease(t, 2300, 400)));
     }
 }

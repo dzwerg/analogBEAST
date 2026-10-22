@@ -38,6 +38,14 @@ static void turn(unsigned role, int steps)
     advance(40);
 }
 
+
+/* Navigate with the real SELECT encoder; ALGO is no longer a menu shortcut. */
+static void select_page(unsigned first_id)
+{
+    for (unsigned n = 0; n < GU_NPAGE && GU_PAGES[gu.page].k[0].id != first_id; n++)
+        turn(EN_SELECT, 1);
+}
+
 static void check(int success, const char *label)
 {
     ++total;
@@ -62,24 +70,79 @@ int main(void)
     check(gu.ready, "Golana simulator booted");
     uint32_t writes_initial = web_flash_writes_count();
 
-    /* ALGO from ANY page enters MicroSTEP's BANK/PATTERN, never cutoff. */
+    /* Context ALGO: HOME controls tempo, it no longer opens the sequencer. */
     gu_set(&GU_PAGES[0].k[0], 64);
     int cutoff_initial = gu_t()->p[GL_CUTOFF];
-    turn(EN_ALGO, -1);
-    check(gu_t()->p[GL_CUTOFF] == cutoff_initial &&
-          gu.dz_seq_mode == 1 && GU_PAGES[gu.page].k[0].id == GV_DZ_BANK,
-          "ALGO from HOME opens BANK/PATTERN without touching CUTOFF");
+    int tempo_initial = song.g[G_BPM];
     press(B_HOME);
+    turn(EN_ALGO, -1);
+    check(song.g[G_BPM] == tempo_initial - 1 && gu.page == 0 &&
+          gu_t()->p[GL_CUTOFF] == cutoff_initial,
+          "ALGO on HOME changes tempo, not cutoff or page");
+    turn(EN_ALGO, 1);
+    check(song.g[G_BPM] == tempo_initial, "ALGO HOME tempo reversible");
+    /* SELECT remains the global navigator across menu groups in either direction.
+     * Hidden engine-only pages are skipped; no special SELECT -> SONG shortcut. */
+    press(B_HOME);
+    turn(EN_SELECT, 1);
+    check(GU_PAGES[gu.page].btn == B_EDIT && GU_PAGES[gu.page].k[0].id == GL_O1WAVE,
+          "SELECT goes HOME -> OSC 1");
+    turn(EN_SELECT, -1);
+    check(gu.page == 0 && GU_PAGES[gu.page].btn == B_HOME,
+          "SELECT goes OSC 1 -> HOME");
+    select_page(GL_FTYPE);
+    turn(EN_SELECT, 1);
+    check(GU_PAGES[gu.page].k[0].id == GL_KTRK,
+          "SELECT goes FILTER -> KEY TRACK");
+    turn(EN_SELECT, 1);
+    check(GU_PAGES[gu.page].k[0].id == GL_FA,
+          "SELECT skips hidden BRUTE page in MIKROKORG");
+    press(B_HOME);
+
+    press(B_SEQ);
+    check(gu.dz_seq_mode == 0 && GU_PAGES[gu.page].k[0].id == GL_ARPON,
+          "SEQ opens ARP");
+    press(B_SEQ);
+    check(gu.dz_seq_mode == 0 && GU_PAGES[gu.page].k[0].id == P_AGATE,
+          "SEQ advances to TIMING");
+    press(B_SEQ);
+    check(gu.dz_seq_mode == 0 && GU_PAGES[gu.page].k[0].id == GL_ARPLAST,
+          "SEQ advances to STEPS");
     press(B_SEQ);
     check(gu.dz_seq_mode == 1 && GU_PAGES[gu.page].k[0].id == GV_DZ_BANK,
-          "SEQ returns to the selected BANK/PATTERN page");
-    turn(EN_ALGO, 1);
+          "SEQ advances to BANK/PATTERN");
+    press(B_SEQ);
     check(gu.dz_seq_mode == 2 && GU_PAGES[gu.page].k[0].id == GV_DZ_SONG_STEP,
-          "ALGO toggles to SONG editor");
-    turn(EN_ALGO, -1);
+          "SEQ advances to SONG");
+    press(B_SEQ);
+    check(gu.dz_seq_mode == 0 && GU_PAGES[gu.page].k[0].id == GL_ARPON,
+          "SEQ wraps SONG -> ARP");
+    turn(EN_ALGO, 1);
+    check(GU_PAGES[gu.page].k[0].id == GL_ARPON,
+          "ALGO in ARP does not navigate");
+    /* Physical ARP button retains its original toggle function. */
+    int arp_initial = gu_t()->p[GL_ARPON];
+    press(B_ARP);
+    check(gu_t()->p[GL_ARPON] != arp_initial,
+          "ARP physical button toggles ARP");
+    press(B_ARP);
+    check(gu_t()->p[GL_ARPON] == arp_initial,
+          "ARP physical button toggles back");
+    select_page(GV_DZ_BANK);
+    check(gu.dz_seq_mode == 1 && GU_PAGES[gu.page].k[0].id == GV_DZ_BANK,
+          "SELECT opens BANK/PATTERN");
+    select_page(GV_DZ_SONG_STEP);
+    check(gu.dz_seq_mode == 2 && GU_PAGES[gu.page].k[0].id == GV_DZ_SONG_STEP,
+          "SELECT opens SONG editor");
+    press(B_SEQ);
+    check(gu.dz_seq_mode == 0 && GU_PAGES[gu.page].k[0].id == GL_ARPON,
+          "SEQ exits SONG to ARP");
+    select_page(GV_DZ_BANK);
+    select_page(GV_DZ_SONG_STEP);
+    select_page(GV_DZ_BANK);
     check(gu.dz_seq_mode == 1 && GU_PAGES[gu.page].k[0].id == GV_DZ_BANK &&
           gu_t()->p[GL_CUTOFF] == cutoff_initial,
-          "ALGO toggles back to BANK/PATTERN and leaves cutoff unchanged");
+          "SELECT returns to BANK/PATTERN; cutoff unchanged");
 
     /* Four actual encoder inputs, not direct model setters. */
     turn(EN_K1, 1);
@@ -93,15 +156,15 @@ int main(void)
           knob_value(2) == 1 && knob_value(3) == 0,
           "BANK/PATTERN K3/K4 set SONG ON and ONCE");
 
-    turn(EN_ALGO, 1);
+    select_page(GV_DZ_SONG_STEP);
     check(gu.dz_seq_mode == 2 && GU_PAGES[gu.page].k[0].id == GV_DZ_SONG_STEP,
-          "ALGO advances to SONG editor");
-    turn(EN_ALGO, 1);
+          "SELECT advances to SONG editor");
+    select_page(GV_DZ_BANK);
     check(gu.dz_seq_mode == 1 && GU_PAGES[gu.page].k[0].id == GV_DZ_BANK,
-          "ALGO never returns to legacy NORMAL via encoder");
-    turn(EN_ALGO, -1);
+          "SELECT returns to BANK/PATTERN");
+    select_page(GV_DZ_SONG_STEP);
     check(gu.dz_seq_mode == 2 && GU_PAGES[gu.page].k[0].id == GV_DZ_SONG_STEP,
-          "Reverse ALGO returns to SONG");
+          "SELECT returns to SONG");
 
     /* Selecting another song row must not alter any row or extend song_count. */
     dz_song_entry_t row0 = dz_model.song[0];
@@ -135,14 +198,16 @@ int main(void)
           !strcmp(end_name, "END"), "BANK END creates a terminal song row");
     gu_text(&GU_PAGES[gu.page].k[3], end_name);
     check(!strcmp(end_name, "END"), "PATTERN display also shows END");
-    turn(EN_K4, -1); /* PATTERN END -> 16 */
-    check(!dz_seq_song_is_end(&dz_model.song[2]), "Turning away from END restores an editable row");
-    turn(EN_K4, 1); /* PATTERN END */
-    check(dz_seq_song_is_end(&dz_model.song[2]), "PATTERN END creates a terminal song row");
+    turn(EN_K4, -1); /* END has no K4 parameter */
+    check(dz_seq_song_is_end(&dz_model.song[2]), "END ignores K4");
+    turn(EN_K3, -4); /* END -> A */
+    check(!dz_seq_song_is_end(&dz_model.song[2]), "K3 away from END restores an editable row");
+    turn(EN_K3, 4); /* A -> END */
+    check(dz_seq_song_is_end(&dz_model.song[2]), "K3 can restore END");
     turn(EN_K1, -2); /* back to row 1 */
 
     /* Back to BANK/PATTERN, then open the existing REC editor. */
-    turn(EN_ALGO, -1);
+    select_page(GV_DZ_BANK);
     check(gu.dz_seq_mode == 1 && dz_model.bank == 1 && dz_model.pattern == 2,
           "BANK/PATTERN selection survives SONG browsing");
     step_t original_steps[NSTEP];
@@ -173,14 +238,17 @@ int main(void)
     check(gu_t()->p[P_SLEN] == 63, "REC K1 changes independent pattern length");
     press(B_SEQ); /* commit to RAM and restore synthesizer */
     dz_pattern_t *selected = &dz_model.patterns[dz_seq_pat_index(1, 2)];
-    check(!gu.dz_edit_active && GU_PAGES[gu.page].k[0].id == GV_DZ_BANK,
-          "SEQ exits REC back to BANK/PATTERN");
+    check(!gu.dz_edit_active && gu.dz_seq_mode == 0 && GU_PAGES[gu.page].k[0].id == GL_ARPON,
+          "SEQ exits REC to first normal ARP page");
     check(selected->length == 63 && selected->step[0].note == rec_note,
           "REC saves note and length in selected RAM pattern");
     check(!memcmp(original_steps, gu_t()->step, sizeof original_steps) &&
           gu_t()->p[P_SLEN] == original_len && gu.dirty == original_dirty,
           "REC restores original synth steps, length and dirty state");
 
+    select_page(GV_DZ_BANK); /* reopen selected BANK/PATTERN after SEQ reset */
+    check(gu.dz_seq_mode == 1 && GU_PAGES[gu.page].k[0].id == GV_DZ_BANK,
+          "SELECT after SEQ reset reopens BANK/PATTERN");
     turn(EN_K2, 1);
     check(dz_model.pattern == 3 &&
           dz_model.patterns[dz_seq_pat_index(1, 3)].step[0].note == 0,
@@ -222,19 +290,27 @@ int main(void)
     check(web_flash_writes_count() == writes_initial,
           "Stage 5 UI/REC/PLAY caused no NOR flash writes");
     press(B_HOME);
+    int bpm_before = song.g[G_BPM];
     turn(EN_ALGO, 1);
+    check(gu.page == 0 && song.g[G_BPM] == bpm_before + 1,
+          "ALGO on HOME changes tempo, does not navigate");
+    select_page(GV_DZ_BANK);
     check(gu.dz_seq_mode == 1 && GU_PAGES[gu.page].k[0].id == GV_DZ_BANK,
-          "ALGO from HOME always opens MicroSTEP menu");
+          "SELECT from HOME reaches BANK/PATTERN");
     press(B_REC);
     check(gu.dz_edit_active, "REC from BANK opens selected DZ pattern");
     turn(EN_ALGO, 1);
-    check(!gu.dz_edit_active && gu.dz_seq_mode == 1 && GU_PAGES[gu.page].k[0].id == GV_DZ_BANK,
-          "ALGO during REC commits DZ pattern and returns to MicroSTEP menu");
+    check(gu.dz_edit_active && GU_PAGES[gu.page].btn == B_REC,
+          "ALGO during REC cannot exit or commit the pattern");
+    press(B_SEQ);
+    check(!gu.dz_edit_active && GU_PAGES[gu.page].k[0].id == GL_ARPON,
+          "SEQ safely commits and exits REC");
     press(B_SAVE);
     check(gu.save, "SAVE opens WRITE dialog");
     turn(EN_ALGO, 1);
-    check(!gu.save && gu.dz_seq_mode == 1 && GU_PAGES[gu.page].k[0].id == GV_DZ_BANK,
-          "ALGO during WRITE safely cancels dialog and opens MicroSTEP menu");
+    check(gu.save, "ALGO during WRITE cannot silently cancel");
+    press(B_HOME);
+    check(!gu.save, "HOME cancels WRITE explicitly");
 
     printf("\nDZ Stage 5 UI / REC / song: %d/%d passed; %d failures\n",
            total - fails, total, fails);

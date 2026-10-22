@@ -29,11 +29,12 @@
 #define FELUCCA_UART 1           /* TRS MIDI IN on UART1 / PH8 */
 #endif
 #ifndef FELUCCA_ID
-#define FELUCCA_ID "FM-1_900"    /* package identity (build.py: the .fwsc marker string) */
+#define FELUCCA_ID "FM-1_901"    /* package identity (build.py: the .fwsc marker string) */
 #endif
 #ifndef FELUCCA_VERSION
 #define FELUCCA_VERSION "v1.0"   /* (GOLANA 1.0) shown in the menu, the console and the editor; build.py --release X.Y */
 #endif
+#define AB_BRAND_NAME "analogBEAST"   /* user-facing app name; OTA ID remains FM-1_901 */
 #if FELUCCA_OTA && !FELUCCA_FLASH
 #error "FELUCCA_OTA needs FELUCCA_FLASH"
 #endif
@@ -94,11 +95,16 @@
 #include "upreset.c"             /* user presets (RAM mirror; flash with FELUCCA_FLASH) */
 #if GOLANA
 #include "golana_ext.c"          /* 48 additional steps per program, song settings */
-#include "golana_pattern_model.c" /* DZ Stage 2: pattern/song RAM model, not wired to flash */
+#include "analogbeast_snapshot.c" /* v4 portable pattern/song format */
+#include "golana_pattern_model.c" /* v4 sequencer model */
 #endif
 #include "project.c"
 #if GOLANA
 #include "golana_dz_store.c" /* DZ: two-page crash-consistent flash store */
+#include "analogbeast_v5_extra.c"   /* v5 Stage 3: RAM preview; NO v5 flash writes */
+#include "analogbeast_v5_controls.c" /* v5 Stage 4a: bounded RAM-only UI edits */
+#include "analogbeast_v5_nor.c"     /* v5 NOR read/probe only */
+#include "analogbeast_v5_runtime.c" /* read-only boot + pure playback model */
 #endif
 #if FELUCCA_OTA
 #if GOLANA

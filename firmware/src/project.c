@@ -606,10 +606,23 @@ static int proj_pack(project_store_t *out, const project_t *q)
             b[pos++] = (uint8_t)(s->probability | (r >> 1) << 7);
         }
     }
-    if (pos + sizeof q->chain + sizeof q->motion > PROJ_FM6_OFF) return 0;
+    /* miniBRUTE appends seven common params after the FUN10 layout had only
+     * 16 spare bytes (28 more bytes in four tracks): the last 12 bytes of the
+     * motion block reach into the FM6 patch section. FM6_PACKED values use
+     * 0..127, leaving one high bit per byte. Stash those 12 bytes in the
+     * unused high bits of 96 patch bytes; on load they are removed again.
+     * Old FUN10 records with np <= 115 have no extension and load unchanged.
+     * The 3840-byte FUN10 record, its name, and all FM6 patch values survive. */
+    uint32_t used = pos + sizeof q->chain + sizeof q->motion;
+    uint32_t spill_len = used > PROJ_FM6_OFF ? used - PROJ_FM6_OFF : 0u;
+    uint8_t spill[64];
+    if (spill_len > sizeof spill || spill_len * 8u > sizeof q->fm6) return 0;
     memcpy(b + pos, &q->chain, sizeof q->chain); pos += sizeof q->chain;
     memcpy(b + pos, &q->motion, sizeof q->motion);
+    if (spill_len) memcpy(spill, b + PROJ_FM6_OFF, spill_len);
     memcpy(b + PROJ_FM6_OFF, q->fm6, sizeof q->fm6);
+    for (i = 0; i < spill_len * 8u; i++)
+        b[PROJ_FM6_OFF + i] |= (uint8_t)(((spill[i >> 3u] >> (i & 7u)) & 1u) << 7u);
     {   /* the name (0-padded; stops at the first 0) */
         char n[PROJ_NAME_LEN + 1u];
         memcpy(b + PROJ_NAME_OFF, n, proj_name_get(n, (const uint8_t *)q->name));
@@ -661,10 +674,13 @@ static int proj_unpack(project_t *q, const uint8_t *b, uint32_t st)
     uint32_t pos = 68u, t, i, magic, size, sum, np = b[66], v7 = st == PROJ_STORE_V7, v10 = st == PROJ_STORE_SIZE;
     uint32_t name_off = st - 4u - PROJ_NAME_LEN, end = v7 ? name_off : name_off - NTRK * FM6_PACKED;
     uint32_t mot = v10 ? sizeof q->motion : PROJ_MOTION_V9, chn = v10 ? sizeof q->chain : sizeof(chain_v9_t);
+    uint32_t used = 68u + NTRK * (np + 2u + NSTEP * 9u) + chn + mot;
+    uint32_t spill_len = used > end ? used - end : 0u;
     memcpy(&magic, b, 4); memcpy(&size, b + 4, 4); memcpy(&sum, b + st - 4u, 4);
     if (magic != (v7 ? PROJ_MAGIC_V7 : st == PROJ_STORE_V8 ? PROJ_MAGIC_V8 : st == PROJ_STORE_V9 ? PROJ_MAGIC_V9 : PROJ_MAGIC) ||
         size != st || sum != proj_hash(b, st - 4u) ||
-        np < 8u || np > P_COUNT || 68u + NTRK * (np + 2u + NSTEP * 9u) + chn + mot > end)
+        np < 8u || np > P_COUNT || (spill_len && !v10) || spill_len > 64u ||
+        spill_len * 8u > NTRK * FM6_PACKED)
         return 0;
     memset(q, 0, sizeof *q); q->magic = PROJ_MAGIC; q->size = sizeof *q;
     memcpy(q->g, b + 8, sizeof q->g); q->sel = b[62]; q->parts = b[63]; q->phys = b[64];
@@ -703,9 +719,17 @@ static int proj_unpack(project_t *q, const uint8_t *b, uint32_t st)
         if (!chain_from_v9(&q->chain, &c9)) return 0;
     }
     pos += chn;
-    if (v10)
+    if (v10) {
         memcpy(&q->motion, b + pos, sizeof q->motion);
-    else if (!proj_motion_v9(&q->motion, b + pos))
+        if (spill_len) {
+            /* Recover precisely the overflowing motion tail from the FM6
+             * patch high bits. The lower seven bits remain patch values. */
+            uint8_t spill[64] = {0};
+            for (i = 0; i < spill_len * 8u; i++)
+                spill[i >> 3u] |= (uint8_t)(((b[end + i] >> 7u) & 1u) << (i & 7u));
+            memcpy((uint8_t *)&q->motion + sizeof q->motion - spill_len, spill, spill_len);
+        }
+    } else if (!proj_motion_v9(&q->motion, b + pos))
         return 0;
     if (!proj_motion_ids(&q->motion, np) || !chain_valid(&q->chain) || !motion_valid(&q->motion)) return 0;
     for (t = 0; t < NTRK; t++) {

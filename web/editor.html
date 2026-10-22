@@ -8,7 +8,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Felucca Editor</title>
+<title>analogBEAST v1.0 | Synth Studio</title>
 <style>
   /* Fukiai: Hügelton Instruments' icon font (MIT, FUKIAI-LICENSE.txt). Icons are text in .ic spans;
      they stay hidden until the face has loaded (html.fk), so a missing font never shows boxes. */
@@ -153,12 +153,125 @@
   #sysinfo th { padding-right: 16px; }
   [hidden] { display: none !important; }
 </style>
+<style id="abstudio-theme">
+/* analogBEAST Studio. Scoped where possible so the existing Felucca subeditors
+   and the independent analogBEAST piano-roll keep their own functionality. */
+:root,
+:root[data-theme="dark"] {
+ --bg:#0c0e13; --fg:#eef1f5; --dim:#a7afbd; --line:#303541;
+ --ab-primary:#ed8a24; --ab-surface:#181d26; --ab-border:#313845;
+ color-scheme:dark;
+}
+body { background:var(--bg); font-family: system-ui, -apple-system, 'Segoe UI', Arial, sans-serif; }
+main { max-width:1440px; padding:20px clamp(12px,3vw,36px) 48px; }
+h1 { font-size:clamp(23px,2.7vw,34px); color:#f8a347; letter-spacing:.025em; }
+.top { background:rgba(12,14,19,.98); border:1px solid #272c36; border-radius:12px;
+       padding:10px 12px 0; box-shadow:0 9px 22px #0006; }
+#status { color:#cdd4dc; }
+button, .seg button,button.tog { cursor:pointer; border-radius:6px; }
+button { background:#29313d; color:#f4f4f5; border:1px solid #3e4755; padding:6px 11px; }
+button:hover:not(:disabled) { border-color:var(--ab-primary); }
+button:focus-visible,select:focus-visible,input:focus-visible { outline:2px solid var(--ab-primary);outline-offset:2px; }
+#connect { background:var(--ab-primary);border-color:#ffb363;color:#151719;font-weight:700; }
+#version { color:#f0a447;font-weight:700; }
+.tabs { border-color:#3a404b; gap:4px; padding-top:4px; }
+.tabs button { border-radius:6px 6px 0 0;color:#aeb7c5;padding:8px 13px; }
+.tabs button[aria-selected="true"] { background:var(--ab-primary);color:#121316;font-weight:700; }
+.tabs button:hover { color:#fff; }
+#trackbar { border-color:#38404d; }
+.seg button[aria-pressed="true"],button.tog[aria-pressed="true"] { background:var(--ab-primary); color:#151719;border-color:var(--ab-primary); }
+select,input[type=text],input[type=number],input[type=search] { background:#11151c; color:#edf1f6;
+ border:1px solid #424b5b;border-radius:6px;padding:5px 7px; }
+input[type=range],input[type=checkbox] { accent-color:var(--ab-primary); }
+.browser { background:#151a22;border:1px solid #303845;border-radius:12px;
+           padding:16px;gap:16px;margin:10px 0; }
+.browser select[size] { min-width:220px; max-width:min(100%,400px); }
+.groups#ab-impossible { display:none; }
+#p-sound .groups { columns:auto;display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px;align-items:start; }
+.ab-studio-panel { break-inside:avoid;border:1px solid #333b48;border-radius:12px;
+  padding:15px;background:#171c25;min-height:120px; }
+.ab-studio-panel h2 { margin:0;border-bottom:1px solid #373f4d; padding-bottom:9px;
+ font-size:13px;color:#ffb461;letter-spacing:.025em;font-weight:760; }
+.ab-studio-panel .ab-subtle { margin:8px 0 12px;min-height:2.2em;
+ font-size:11px;line-height:1.45;color:#9ca8b9; }
+.ab-studio-panel .row { grid-template-columns:minmax(62px,88px) minmax(65px,1fr) minmax(46px,79px);
+ gap:7px;min-height:32px; }
+.ab-studio-panel .row>span:first-child {font-size:11px;color:#d2d9e2;overflow-wrap:anywhere;}
+.ab-studio-panel .row .v {font-size:11px;font-variant-numeric:tabular-nums;color:#ffbc7d;}
+.ab-studio-panel .row select { min-width:0; }
+.ab-studio-panel.ab-brute {border-color:#a66828;box-shadow:inset 0 3px 0 #e68c27;}
+.ab-studio-panel.ab-filter {border-color:#555d68;}
+.ab-studio-panel.ab-advanced {grid-column:1 / -1;}
+.ab-studio-panel.ab-advanced .row {max-width:680px;}
+#abstudio-hero { display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;
+ margin:12px 0;background:linear-gradient(110deg,#272017,#161b23 65%);
+ border:1px solid #514029;padding:15px 18px;border-radius:12px; }
+#abstudio-hero h2 {color:#ffb45d;font-size:17px;border:none;padding:0;margin-bottom:5px;}
+#abstudio-hero p {color:#b6c0cc;font-size:12px;margin:2px 0;}
+#abstudio-hero .ab-actions {display:flex;flex-wrap:wrap;gap:8px;}
+#abstudio-hero .ab-actions a {background:#252b35;border:1px solid #5e4832;border-radius:7px;
+ color:#ffd09a;text-decoration:none;padding:9px 12px;font-weight:700;}
+#abstudio-hero .ab-actions a:hover {background:#5b3e23;}
+#abstudio-device {display:inline-block;color:#87d9af;font-size:11px;margin-top:5px;}
+#p-settings .groups,#p-sequencer .groups {columns:300px;}
+#p-settings .group,#p-sequencer .group {padding:12px;border-radius:10px;border:1px solid #303845;background:#171c25;}
+.list, .strip {border-color:#343c48;}
+footer {padding:18px 0;color:#9ca7b5;}
+@media(max-width:600px){ .top{position:static;} .ab-studio-panel{padding:11px;} #p-sound .groups{grid-template-columns:1fr;} }
+
+</style>
+<!-- analogBEAST v1.0 Studio ARP cleanup -->
+
+<style id="ab-arp-cleanup-style">
+/* Old Felucca navigation is retained internally for backwards compatibility,
+   but is not part of the analogBEAST Studio UI. No device/flash data is erased. */
+#tabs [data-tab="fm6"], #tabs [data-tab="tracks"],
+#tabs [data-tab="library"], #tabs [data-tab="samples"],
+#tabs [data-tab="projects"] { display:none !important; }
+#tabs [data-tab="sound"] { order:0; }
+#tabs [data-tab="sequencer"] { order:1; }
+#tabs [data-tab="settings"] { order:2; }
+#p-fm6, #p-tracks, #p-library, #p-samples, #p-projects { display:none !important; }
+/* Sound = oscillator / filter / effects, not a preset browser. Import/export
+   of sound files remains available, while hidden controls remain in the DOM. */
+#p-sound #init, #p-sound #factlib { display:none !important; }
+#p-sound #browser { padding:10px 14px; }
+/* The old 4-part Felucca strip is separate from the analogBEAST A-H banks. */
+#trackbar { display:none !important; }
+/* Our ARP tab shows firmware-backed P_* controls, not the legacy step grid. */
+#p-sequencer #steps, #p-sequencer #motion-panel { display:none !important; }
+#p-sequencer #seqgroups { columns:unset; display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr)); gap:14px; }
+#p-sequencer .ab-studio-panel { margin:0; }
+#p-sequencer .ab-arp-intro { background:#201b16; border:1px solid #624121; padding:14px 16px; border-radius:11px; margin:12px 0; }
+#p-sequencer .ab-arp-intro h2 { margin:0 0 6px;color:#ffb15c;font-size:17px;border:0; }
+#p-sequencer .ab-arp-intro p { margin:4px 0;color:#d6bda5;line-height:1.5; }
+#p-sound .ab-studio-panel.ab-advanced { min-height:0; }
+#p-sound .ab-studio-panel.ab-advanced summary { cursor:pointer; font-weight:700; color:#ffb15c; padding:4px 0; }
+#p-sound .ab-studio-panel.ab-advanced[open] summary { margin-bottom:10px; }
+#p-sound .ab-studio-panel.ab-advanced:not([open]) { min-height:0; }
+</style>
+
+<style id="ab-instruments-v2-css">
+/* All original Felucca controls stay in the DOM for existing code, but are not GOLANA programs. */
+#p-sound #browser > label { display:none !important; }
+#p-sound #ab-instruments { box-sizing:border-box; display:flex !important; flex-flow:row wrap; align-items:end;
+ gap:10px 16px; padding:12px 14px; border:1px solid #684620; border-radius:9px;
+ background:#1c2028; width:100%; margin-bottom:8px; }
+#p-sound #ab-instruments label { display:flex; flex-direction:column; gap:5px;
+ color:#f7aa53; font-weight:700; flex:1 1 230px; }
+#p-sound #ab-instrument-program {width:100%; max-width:530px; min-width:200px;
+ background:#131922; color:#f2f4f8; border:1px solid #687182; border-radius:6px;
+ padding:10px; font:inherit; }
+#p-sound #ab-instrument-refresh {background:#303a48; color:#fff; border:1px solid #596475;
+ border-radius:6px; padding:10px 12px; }
+#p-sound #ab-instrument-feedback { flex-basis:100%; color:#bac4d0; font-size:12px; }
+</style>
 </head>
 <body>
 <main>
   <button class="lang" id="lang"></button>
-  <h1>Felucca Editor</h1>
-  <p class="dim"><a href="../installer/" style="color:inherit" data-t="installer"></a></p>
+  <h1>analogBEAST <span style="font-size:.42em;color:#cad1db;font-weight:450">v1.0 · STUDIO</span></h1>
+  <p class="dim ab-installer-link"><a href="./installer/" id="abstudio-installer">Installer / Release</a> · <span>analogBEAST basiert auf Felucca (GPL-3.0)</span></p>
   <!-- always visible: connection, version, sync mode, the tabs and (Sound / Sequencer / Tracks) the track selector -->
   <header class="top">
     <div class="bar">
@@ -171,7 +284,7 @@
     <nav class="tabs" id="tabs" role="tablist">
       <button role="tab" data-tab="sound" data-t="sound" data-ic="symbol_audio"></button>
       <button role="tab" data-tab="fm6" data-t="tabFm6" data-ic="ui_knob"></button>
-      <button role="tab" data-tab="sequencer" data-t="tabSeq" data-ic="symbol_grid"></button>
+      <button role="tab" data-tab="sequencer" data-ic="ui_knob">ARP</button>
       <button role="tab" data-tab="tracks" data-t="tabTracks" data-ic="ui_slider_vertical"></button>
       <button role="tab" data-tab="library" data-t="library" data-ic="symbol_books"></button>
       <button role="tab" data-tab="samples" data-t="samples" data-ic="symbol_waves"></button>
@@ -183,7 +296,54 @@
   <p class="hint" id="hint" hidden></p>
 
   <section class="panel" id="p-sound" data-tab="sound" data-dev hidden>
+    <div id="abstudio-hero">
+      <div><h2>analogBEAST · SYNTH STUDIO</h2>
+        <p id="abstudio-mode">BRUTE / MIKROKORG · Hardware-Synthese</p>
+        <span id="abstudio-device">Warte auf Verbindung</span></div>
+      <div class="ab-actions"><a href="#sequencer" title="Patterns, SONG und ALBUM öffnen">SEQ · SONG · ALBUM →</a></div>
+    </div>
     <div class="browser" id="browser">
+<!-- AB_INSTRUMENT_P01_P32_V2 -->
+<div id="ab-instruments" data-firmware="GOLANA-32">
+<label for="ab-instrument-program">INSTRUMENT · P01–P32
+<select id="ab-instrument-program" disabled>
+<option value="">— Gerät verbinden —</option>
+<option value="0">P01 · FAT BASS</option>
+<option value="1">P02 · ACID LINE</option>
+<option value="2">P03 · GLIDE LEAD</option>
+<option value="3">P04 · UNISON SAW</option>
+<option value="4">P05 · SYNC PAD</option>
+<option value="5">P06 · BRIGHT ARP</option>
+<option value="6">P07 · 80S BRASS</option>
+<option value="7">P08 · ORGAN</option>
+<option value="8">P09 · SOFT PAD</option>
+<option value="9">P10 · PHASE PAD</option>
+<option value="10">P11 · SLOW ARP</option>
+<option value="11">P12 · SOFT BELLS</option>
+<option value="12">P13 · DRONE</option>
+<option value="13">P14 · WARM LEAD</option>
+<option value="14">P15 · DARK UNISON</option>
+<option value="15">P16 · S&amp;H TEXTURE</option>
+<option value="16">P17 · INIT</option>
+<option value="17">P18 · INIT</option>
+<option value="18">P19 · INIT</option>
+<option value="19">P20 · INIT</option>
+<option value="20">P21 · INIT</option>
+<option value="21">P22 · INIT</option>
+<option value="22">P23 · INIT</option>
+<option value="23">P24 · INIT</option>
+<option value="24">P25 · INIT</option>
+<option value="25">P26 · INIT</option>
+<option value="26">P27 · INIT</option>
+<option value="27">P28 · INIT</option>
+<option value="28">P29 · INIT</option>
+<option value="29">P30 · INIT</option>
+<option value="30">P31 · INIT</option>
+<option value="31">P32 · INIT</option>
+</select></label>
+<button type="button" id="ab-instrument-refresh">Programmnamen lesen</button>
+<div id="ab-instrument-feedback" role="status">P01–P16: Werkklänge. P17–P32: INIT oder gespeicherte Sounds. Gerät verbinden.</div>
+</div>
       <label><span data-t="engine"></span><br><select id="engine"></select></label>
       <label><span data-t="presets"></span><br><select id="preset" size="8"></select></label>
       <div>
@@ -225,6 +385,11 @@
   </section>
 
   <section class="panel" id="p-sequencer" data-tab="sequencer" data-dev hidden>
+    <div class="ab-arp-intro" id="ab-arp-intro">
+      <h2>analogBEAST · ARPEGGIATOR</h2>
+      <p>Die Regler steuern den ARP des aktuell gewählten Synth-Parts. GOLANA-ARP gehört zum Sound; Timing/Performance ist trackbezogen und bleibt beim Presetwechsel erhalten.</p>
+      <p>Änderungen werden über den bestehenden USB-MIDI-Editor an das Gerät gesendet. Sie werden nicht automatisch als neues Preset gespeichert.</p>
+    </div>
     <div class="groups" id="seqgroups"></div>
     <div id="steps">
       <h2 data-t="steps" data-ic="note_eight"></h2>
@@ -2882,7 +3047,7 @@ async function connect() {
       }
       access.onstatechange = onState;
     }
-    const isF = (p) => /felucca/i.test(p.name || "") && p.state !== "disconnected";
+    const isF = (p) => /(?:felucca|analogbeast)/i.test(p.name || "") && p.state !== "disconnected";
     const input = [...access.inputs.values()].find(isF);
     const output = [...access.outputs.values()].find(isF);
     if (!input || !output) { sayK("nodevice"); return; }
@@ -2936,7 +3101,7 @@ function disconnect(reasonKey = "disconnected") {
 
 function onState(e) {
   const p = e.port;
-  if (!p || !/felucca/i.test(p.name || "")) return;
+  if (!p || !/(?:felucca|analogbeast)/i.test(p.name || "")) return;
   if (dev && p.state === "disconnected" && (p.id === dev.input.id || p.id === dev.output.id)) {
     disconnect("lost");
   } else if (!dev && wantConnected && p.state === "connected" && p.type === "output") {
@@ -3030,6 +3195,7 @@ async function loadSteps(d = dev) {
 
 /* --------------------------------------------------------------- UI --- */
 function buildUI() {
+  abInstRender();
   const sel = $("engine");
   /* (engine 1, "-": DIGITAL retired, reserved: never offered) */
   sel.replaceChildren(...engineOrder(dev.info.engines).map((i) => el("option", { value: i, text: dev.info.engines[i] })));   /* (shown order) */
@@ -3100,13 +3266,118 @@ function modDst(d, txt) {
   return e && visible(e) ? e.label : txt;
 }
 
+/* analogBEAST Studio v1.0: firmware-aware Sound tab for original Felucca editor.
+ * Keep the original editor's WebMIDI Link, params, presets, project, samples,
+ * settings and licensing. Inject inside its IIFE, before buildGroups().
+ * GPL-3.0-only; see root LICENSE.
+ */
+function abStudioSupported(info) {
+  // All mapped IDs come from the analogBEAST v1.0 firmware/src/core.h
+  // GOLANA GL_* aliases; pe0-7 ... pe0-1 are the seven added BRUTE params.
+  return !!(info && dev && dev.dump && Array.isArray(info.engines) &&
+    String(info.engines[dev.dump.engine] || '').toUpperCase() === 'GOLANA' &&
+    Number.isInteger(info.pe0) && info.pe0 >= 110 &&
+    info.pcount === info.pe0 + 8 && info.gcount >= 27 &&
+    dev.pdesc && dev.gdesc && dev.dump.p && dev.dump.g);
+}
+function abStudioBuild(groups, info) {
+  const E=info.pe0, used=new Set(), usedG=new Set();
+  const LABELS={
+    [E-7]:['SYNTH','MIKROKORG / BRUTE engine selection'],
+    [E-6]:['BFACT','Brute Factor · filter feedback and saturation'],
+    [E-5]:['SP MODE','Steiner-Parker LP / BP / HP'],
+    [E-4]:['ULTRA','Ultrasaw detuning amount'],
+    [E-3]:['PWM','Pulse width modulation'],
+    [E-2]:['METAL','Triangle Metalizer'],
+    [E-1]:['SUB','Sub / overtone mix'],
+    [E]:['WAVE 1','Oscillator 1 wave'],
+    [E+3]:['WAVE 2','Oscillator 2 wave'],
+    [E+7]:['CUTOFF','GOLANA filter frequency']
+  };
+  const pretty=(row,id)=>{
+    const meta=LABELS[id];if(!meta)return;
+    const lab=row.firstElementChild;if(lab)lab.textContent=meta[0];
+    row.title=meta[1];
+    const ctlInput=row.querySelector('input,select');if(ctlInput)ctlInput.setAttribute('aria-label',meta[1]);
+  };
+  const add=(group,title,sub,ids,tag) => {
+    const advanced = tag === 'ab-advanced';
+    const box=el(advanced?'details':'div',{class:'group ab-studio-panel '+(tag||'')},
+      el(advanced?'summary':'h2',{text:title}),el('p',{class:'ab-subtle',text:sub}));
+    let n=0;
+    for(const id of ids){
+      if(!Number.isInteger(id)||id<0||id>=info.pcount||used.has(id))continue;
+      const row=paramRow(0,id);
+      if(!row)continue;
+      pretty(row,id); used.add(id); box.append(row);n++;
+    }
+    if(n)groups[group].push(box);
+  };
+  const globals=(title,sub,ids) => {
+    const box=el('div',{class:'group ab-studio-panel'},el('h2',{text:title}),el('p',{class:'ab-subtle',text:sub}));
+    let n=0;
+    for(const id of ids){
+      if(!Number.isInteger(id)||id<0||id>=info.gcount||usedG.has(id))continue;
+      const row=paramRow(1,id);
+      if(row){usedG.add(id);box.append(row);n++;}
+    }
+    if(n)groups.setgroups.push(box);
+  };
+  // This is intentionally descriptor-backed. Rendering and setting values goes
+  // through the original paramRow/userSet/Link machinery, NOT an invented SysEx.
+  add('groups','01 · SOUND MODE','MIKROKORG oder BRUTE · Klangcharakter und Steiner-Parker Filter',
+    [E-7,E-6,E-5,E-4,E-3,E-2,E-1],'ab-brute');
+  add('groups','02 · OSCILLATOR 1','Wellenform · CTRL 1/2 · Lautstärke · Wavefolder',
+    [E,E+1,E+2,61,101],'ab-osc');
+  add('groups','03 · OSCILLATOR 2','Wellenform · Ring/Sync · Tonhöhe · Mischung',
+    [E+3,E+4,E+5,E+6,62],'ab-osc');
+  add('groups','04 · MIXER & FILTER','Noise · Cutoff · LP24/LP12/BP/HP/MS20 · Resonanz · Filter EG',
+    [63,E+7,64,65,66,67],'ab-filter');
+  add('groups','05 · FILTER ENVELOPE','Eigenständige Filterhüllkurve · Distortion · Retrigger',
+    [68,69,70,71,72,73],'ab-filter');
+  add('groups','06 · AMPLIFIER ENVELOPE','ADSR · synchronisierte Zeiten',
+    [0,1,2,3,4,102],'ab-env');
+  add('groups','07 · LFO 1','Wellenform, Geschwindigkeit und Sync',
+    [74,75,76,77],'ab-mod');
+  add('groups','08 · LFO 2','Wellenform, Geschwindigkeit und Sync',
+    [78,79,80,83],'ab-mod');
+  add('groups','09 · MOD PATCHES','Vier routbare Modulationsverbindungen',
+    [49,50,51,52,53,54,55,56,57,58,59,60],'ab-mod');
+  add('seqgroups','01 · GOLANA ARP / SOUND','Soundbezogen: ARP ein, Typ, Keysync, Last, Step-Masken 1–4 und 5–8',
+    [84,85,86,87,88,89],'ab-arp');
+  add('seqgroups','02 · ARP TIMING / PART','Trackbezogen: Modus, Rate, Oktaven, Gate, Swing, Probability, Hold, Order; bleiben beim Presetwechsel erhalten',
+    [17,18,19,20,21,22,23,24],'ab-arp');
+  add('groups','11 · DELAY / REVERB / MFX','Golana-Effektweg · Effektreihenfolge',
+    [90,8,9,10,11,12,92,93,33,34,35,36],'ab-fx');
+  add('groups','12 · VOICES & PERFORMANCE','Voice mode · Glide · Pan · Detune · Skalen',
+    [37,38,39,40,41,42,43,44,95,25,26,27,28],'ab-voice');
+  add('groups','13 · INSERT / SLICER','Weitere Effekte und der Slicer',
+    [45,46,47,48,96,97,98,99,100],'ab-fx');
+  // The separate analogBEAST piano-roll/SONG editor owns pattern editing.
+  // Do not show legacy Felucca sequencer controls in Sound/ARP.
+  [29,30,31,32,94].forEach(id => used.add(id));
+  // Never silently hide an exposed firmware parameter. Some internal legacy
+  // params are reused for GOLANA; they remain available in an advanced card.
+  const remaining=[];
+  for(let i=0;i<info.pcount;i++)if(!used.has(i))remaining.push(i);
+  add('groups','ADVANCED · weitere Parameter','Direkt aus den Descriptoren der Firmware; nicht in einer Kategorie oben',remaining,'ab-advanced');
+  globals('CLOCK & MIDI','Tempo · Swing · Routing · Tuning',[0,1,2,3,12,13,14,15]);
+  globals('GLOBAL AUDIO / FX','Geräteweite Effektparameter und Reverb-Typ',[4,5,6,7,8,9,10,11,24]);
+  const pill=document.getElementById('abstudio-device');
+  if(pill)pill.textContent=`analogBEAST · GOLANA / BRUTE · Sound & ARP`;
+  const mode=document.getElementById('abstudio-mode');
+  if(mode)mode.textContent='GOLANA · BRUTE / MIKROKORG';
+}
+
 function buildGroups() {
   ctl.clear();
   dev.built = dev.dump.engine;
   /* Sound: the selected track's parameters; Sequencer: its pattern settings; Settings: globals */
   const groups = { groups: [], seqgroups: [], setgroups: [] };
   const { info } = dev;
-  if (knownLayout(info)) {
+  if (abStudioSupported(info)) {
+    abStudioBuild(groups,info);
+  } else if (knownLayout(info)) {
     for (const g of LAYOUT(info.pe0)) {
       const div = el("div", { class: "group" }, el("h2", { ic: HEAD_IC[g.t], text: g.engine ? `EDIT ${info.engines[dev.dump.engine] || ""}` : g.t }));
       if (g.mod != null) {                          /* MOD: slot number, SRC, DST, AMT in one row */
@@ -4652,6 +4923,7 @@ function renderLib() {
 ["libq", "libeng", "libtag", "libsort"].forEach((id) => $(id).addEventListener(id === "libq" ? "input" : "change", renderLib));
 
 function renderBank() {
+  abInstRender();
   const pane = $("bankpane");
   $("bankhint").hidden = !!(dev && dev.bank);
   $("bankhint").textContent = t(!dev || !dev.dump ? "bankConnect" : "bankNone");
@@ -5046,6 +5318,77 @@ function downloadBytes(name, bytes) {
 }
 $("fm6export").addEventListener("click", () => downloadBytes(`${fileSlug(FM6.name(fm6v))}.syx`, FM6.singleSysex(fm6v)));
 
+
+/* analogBEAST instrument selection v2. Firmware GOLANA: 32 program slots, PC 0..31. */
+const AB_INST_FACTORY = Object.freeze(["FAT BASS","ACID LINE","GLIDE LEAD","UNISON SAW","SYNC PAD","BRIGHT ARP","80S BRASS","ORGAN","SOFT PAD","PHASE PAD","SLOW ARP","SOFT BELLS","DRONE","WARM LEAD","DARK UNISON","S&H TEXTURE"]);
+let abInstSelected = "", abInstDevice = null, abInstBusy = false;
+function abInstElements() {
+  return {sel:document.getElementById('ab-instrument-program'),
+    refresh:document.getElementById('ab-instrument-refresh'),
+    feedback:document.getElementById('ab-instrument-feedback')};
+}
+function abInstStatus(s) { const e=abInstElements().feedback;if(e)e.textContent=s; }
+function abInstIsGolana(d) {return !!(d&&d.info&&d.dump&&d.output&&d.info.engines&&d.info.engines[13]==='GOLANA');}
+function abInstRender() {
+  const {sel,refresh}=abInstElements(); if(!sel)return;
+  const d=abInstIsGolana(dev)?dev:null;
+  if (d!==abInstDevice) {abInstDevice=d;abInstSelected='';}
+  sel.disabled=!d; refresh.disabled=!d||abInstBusy;
+  const slots=Array.isArray(d?.bank?.slots)?d.bank.slots:null;
+  const names=[];
+  for(let i=0;i<32;i++){
+    const record=slots?.find(x=>Number(x.slot)===i);
+    const owned=!!(record?.used && Number(record.engine)===13);
+    const name=owned?String(record.name||'Ohne Namen'):(i<16?AB_INST_FACTORY[i]:'INIT');
+    names.push(`P${String(i+1).padStart(2,'0')} · ${name}${owned?' [Gespeichert]':''}`);
+  }
+  const old=sel.dataset.signature||'', signature=names.join('\n');
+  if(signature!==old){
+    // Keep an explicit unknown state: DUMP cannot report the currently selected gu.prog.
+    sel.replaceChildren(new Option('— Programm wählen —',''),...names.map((n,i)=>new Option(n,String(i))));
+    sel.dataset.signature=signature;
+  }
+  sel.value=abInstSelected;
+  if(!d)abInstStatus('Gerät verbinden. Nur GOLANA-Programme P01–P32, keine Felucca-Engines.');
+  else if(!slots)abInstStatus('GOLANA verbunden. Programmnamen vom FM-1 noch nicht gelesen.');
+  else if(!abInstSelected)abInstStatus('32 Programme bereit. Aktuelles Hardwareprogramm ist nicht per Felucca-DUMP rücklesbar.');
+}
+async function abInstReadNames() {
+  if(!abInstIsGolana(dev)||abInstBusy)return;
+  const d=dev; abInstBusy=true; abInstRender();
+  abInstStatus('Lese 32 Programmplätze …');
+  try {
+    d.bank=await bank.list((r,o)=>sessionRequest(d,r,{...o,quiet:true}));
+    if(dev!==d)return;
+    abInstRender();abInstStatus('Namen von den 32 Geräteslots gelesen.');
+  }catch(e){abInstStatus('Lesen fehlgeschlagen: '+e.message);}
+  finally{abInstBusy=false;abInstRender();}
+}
+async function abInstChoose() {
+  const {sel}=abInstElements();const d=dev;
+  if(!sel||!abInstIsGolana(d)){abInstStatus('Keine GOLANA-Verbindung.');return;}
+  const text=sel.value, num=Number(text);
+  if(text===''||!Number.isInteger(num)||num<0||num>31)return;
+  // core.h G_ROUTE=14: 0 CH1-4; 1 SEL; 2 CH5-8; 3 CH9-12; 4 CH13-16.
+  const route=Number(d.dump.g?.[14]??0), channel=route>=2&&route<=4?4*(route-1):0;
+  try{
+    d.output.send([0xC0|channel,num]);
+    abInstSelected=text;
+    abInstStatus(`P${String(num+1).padStart(2,'0')} gesendet (MIDI Program Change). FM-1 auf STOP prüfen; PLAY/REC sperrt Programmwechsel.`);
+    // The Felucca DUMP cannot reveal the active Golana program number; it can show its parameters.
+    await new Promise(resolve=>setTimeout(resolve,180));
+    if(dev===d){try{await afterSoundChange('ready',d);}catch(e){abInstStatus('P'+String(num+1).padStart(2,'0')+' gesendet; Rücklesen fehlgeschlagen: '+e.message);}}
+  }catch(e){abInstStatus('MIDI-Ausgabe fehlgeschlagen: '+e.message);}
+}
+function abInstStart(){
+  const {sel,refresh}=abInstElements();
+  if(!sel||!refresh)return;
+  sel.addEventListener('change',abInstChoose);
+  refresh.addEventListener('click',abInstReadNames);
+  abInstRender();
+}
+
+abInstStart();
 $("connect").addEventListener("click", () => {
   if (dev) { wantConnected = false; disconnect(); } else connect();
 });
@@ -5053,6 +5396,12 @@ applyLang();
 showTab(tab);
 libInit();
 if (!MOCK && !navigator.requestMIDIAccess) sayK("nomidi");
+})();
+</script>
+<script src="analogbeast-seq.js" defer></script>
+<script id="abstudio-release-nav">
+(function(){const link=document.getElementById('abstudio-installer');
+ if(link&&/\/webapp\/editor\//i.test(location.pathname)) link.href='../installer/';
 })();
 </script>
 </body>

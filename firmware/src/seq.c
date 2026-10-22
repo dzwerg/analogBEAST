@@ -53,6 +53,9 @@ static volatile uint8_t panic_req;       /* bit per track: release every soundin
 /* USB-MIDI OUT for sequencer and arpeggiator; physical-key MIDI is already sent elsewhere.
  * Two source masks avoid one source ending a note held by the other. */
 static uint32_t gm_seq[4], gm_arp[4];
+/* The arranger's input to the EXISTING instrument arp, not a second arp.
+ * Kept outside held[]: pattern REST/STOP cannot release a physical key. */
+static uint8_t dz_arp_source_on, dz_arp_source_note, dz_arp_source_velocity;
 static uint32_t gm_key_mask[27];
 static void gm_note(uint32_t arp, uint32_t note, uint32_t vel)
 {
@@ -88,6 +91,12 @@ static void gm_all_off(void)
 static void gu_song_begin(void);
 static int gu_song_next(void);
 static void gu_dz_playback_end(void); /* DZ Stage 4: restore original synth steps on STOP */
+static uint32_t gu_dz_step_gate(uint32_t idx);
+static uint32_t gu_dz_step_samples(uint32_t idx, uint32_t period);
+static uint8_t gu_dz_arp_active(void);
+static uint8_t dz_play_has_backup; /* declared before the timing helpers */
+static volatile int8_t ab5_live_transpose; /* -12..+12, always reset on STOP */
+static volatile uint32_t ab5_switch_request; /* single 32-bit UI -> ISR request */
 #endif
 static volatile uint8_t midi_hint;       /* MIDI IN played track n - 1, which is not the selected one (the UI says so) */
 
@@ -309,9 +318,16 @@ static __attribute__((noinline)) void arp_chord(track_t *t, const uint32_t *list
             t->arp_ch[i - 1u] = (uint8_t)nt;
         if (rec_on(t))
             rec_note(t, nt, 100);
-        trk_note_on(t, nt, 100);
+        trk_note_on(t, nt,
 #if GOLANA
-        if (t == &trk[0]) gm_note(1u, nt, 100u);
+                    t == &trk[0] && dz_arp_source_on ? dz_arp_source_velocity : 100u
+#else
+                    100u
+#endif
+                    );
+#if GOLANA
+        if (t == &trk[0]) gm_note(1u, nt,
+                                dz_arp_source_on ? dz_arp_source_velocity : 100u);
 #endif
     }
 }
@@ -438,6 +454,13 @@ static uint32_t arp_list(const track_t *t, uint32_t *list, uint32_t *cnt)
         if (j == n)
             list[n++] = x;
     }
+#if GOLANA
+    if (t == &trk[0] && dz_arp_source_on && n < 16u) {
+        for (j = 0; j < n && list[j] != dz_arp_source_note; j++)
+            ;
+        if (j == n) list[n++] = dz_arp_source_note;
+    }
+#endif
     *cnt = n;
     if (!t->p[P_AORDER] && t->p[P_AMODE] != AM_ORD)   /* (ORD: as pressed, held[] keeps that order) */
         for (i = 1; i < n; i++)
@@ -488,9 +511,16 @@ static __attribute__((noinline)) void arp_fire(track_t *t, uint32_t period)
         t->arp_note = (uint8_t)list[j];
         if (rec_on(t))
             rec_note(t, t->arp_note, 100);           /* recording: what the arp plays */
-        trk_note_on(t, t->arp_note, 100);
+        trk_note_on(t, t->arp_note,
 #if GOLANA
-        if (t == &trk[0]) gm_note(1u, t->arp_note, 100u);
+                    t == &trk[0] && dz_arp_source_on ? dz_arp_source_velocity : 100u
+#else
+                    100u
+#endif
+                    );
+#if GOLANA
+        if (t == &trk[0]) gm_note(1u, t->arp_note,
+                                dz_arp_source_on ? dz_arp_source_velocity : 100u);
 #endif
     }
 }
@@ -505,8 +535,16 @@ static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
         else
             t->arp_off -= gate_n;
     }
-    if (!t->p[P_AMODE] || !t->nheld) {
-        if (!t->nheld && t->arp_note)
+    if (!t->p[P_AMODE] || (!t->nheld
+#if GOLANA
+        && !(t == &trk[0] && dz_arp_source_on)
+#endif
+        )) {
+        if (!t->nheld
+#if GOLANA
+            && !(t == &trk[0] && dz_arp_source_on)
+#endif
+            && t->arp_note)
             arp_off(t);
         return;
     }
@@ -526,6 +564,10 @@ static void arp_tick(track_t *t, uint32_t n) { arp_step(t, n, n); }
  * and the odd ones shorter, so every odd step starts late */
 static uint32_t step_samples(const track_t *t, uint32_t period, uint32_t idx)
 {
+#if GOLANA
+    if (t == &trk[0] && dz_play_has_backup)
+        return gu_dz_step_samples(idx, period);
+#endif
     return swing_step_len(t, period, idx);   /* core.h: own + global, at most 100 */
 }
 
@@ -935,6 +977,9 @@ static void seq_start(void)
 static void seq_release(track_t *t)
 {
     uint32_t i;
+#if GOLANA
+    if (t == &trk[0]) dz_arp_source_on = 0u;
+#endif
     for (i = 0; i < t->seq_n; i++) {
         trk_note_off(t, t->seq_notes[i]);
 #if GOLANA
@@ -980,12 +1025,20 @@ static void seq_stop(void)
  * part retriggered with GATE of the part; the chance is rolled once for the whole step (a failed roll: no part),
  * a slide into it glides into the first part only, and it never slides or ties out (its last part ends at its
  * gate). x1, what every older pattern holds, is the step exactly as before. */
+#if GOLANA
+/* A playing DZ song uses the note-duration aware TIE gate below. */
+#endif
 #define SEQ_REP (1u << 16)
 #define SEQ_ROLLED (1u << 17)   /* seq_tick rolled the chance already (before the step's parameter locks): it passed */
 #define SEQ_MISS (1u << 18)     /* .. it failed: nothing plays */
 static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint32_t idx, uint32_t period, uint32_t skip)
 {
-    uint32_t i, j, gate = period * (uint32_t)t->p[P_SGATE] / 128u;
+    uint32_t i, j, gate_value = (uint32_t)t->p[P_SGATE], gate;
+#if GOLANA
+    if (t == &trk[0] && dz_play_has_backup)
+        gate_value = gu_dz_step_gate(idx);
+#endif
+    gate = period * gate_value / 128u;
     uint32_t vel = (s->flags & SF_ACCENT) ? 127u : (s->vel ? s->vel : 96u);
     uint32_t slide_in = t->seq_hold && t->seq_n && !(skip & SEQ_REP);
     uint32_t len = t->p[P_SLEN] ? (uint32_t)t->p[P_SLEN] : 1u;
@@ -1006,9 +1059,15 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
         }
     }
     if (s->time == ST_TIE) {
+#if GOLANA
+        /* analogBEAST bank/song player: the NOTE set the entire NOTE+TIE
+         * gate timer. A TIE must not extend, reset or defeat that timer. */
+        if (t == &trk[0] && dz_play_has_backup)
+            return;
+#endif
         if (t->seq_n) {
             t->seq_off = gate + period / 2u;
-            t->seq_hold = (s->flags & SF_SLIDE) != 0 || next_tie;   /* chains hold at any GATE / swing */
+            t->seq_hold = (s->flags & SF_SLIDE) != 0 || next_tie;
         }
         return;
     }
@@ -1017,18 +1076,21 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
         return;
     }
     if (hits > 1u) {                                /* RATCH: the gate of a part, no slide or tie out */
-        gate = step_samples(t, period, idx) / hits * (uint32_t)t->p[P_SGATE] / 128u;
+        gate = step_samples(t, period, idx) / hits * gate_value / 128u;
         if (!(skip & SEQ_REP))
             t->rat_left = (uint8_t)(hits - 1u);
     }
     for (i = 0; i < s->n && i < 4u; i++) {
         uint32_t x = s->note[i];
-        if (qseq) {                                 /* QNT SEQ: onto the scale now; two notes snapping */
-            x = (uint32_t)clamp(scale_snap(t, (int32_t)x), 0, 127);   /* together play once */
-            for (j = 0; j < m && nn[j] != x; j++)
-                ;
-            if (j < m)
-                continue;
+        if (qseq)  /* QNT SEQ still runs before the playback-only transpose */
+            x = (uint32_t)clamp(scale_snap(t, (int32_t)x), 0, 127);
+#if GOLANA
+        if(t == &trk[0] && dz_play_has_backup)
+            x=(uint32_t)clamp((int32_t)x+(int32_t)ab5_live_transpose,0,127);
+#endif
+        if(qseq){
+            for(j=0;j<m && nn[j]!=x;j++) ;
+            if(j<m)continue;
         }
         nn[m] = (uint8_t)x;
         vv[m] = (uint8_t)vel;
@@ -1042,6 +1104,33 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
             sk |= ((skip >> (8u + i)) & 1u) << m;
             m++;
         }
+#if GOLANA
+    if (t == &trk[0] && dz_play_has_backup && gu_dz_arp_active()) {
+        uint32_t k, duration = step_samples(t, period, idx), first = m;
+        for (i = 0; i < m; i++) if (!((sk >> i) & 1u)) { first = i; break; }
+        /* One monophonic pattern note controls the existing arp's held pitch.
+         * Never trigger it directly: neither synth nor USB should duplicate it. */
+        dz_arp_source_on = 0u;
+        t->seq_n = 0u;
+        t->seq_hold = 0u;
+        t->slide_glide = 0u;
+        if (first < m) {
+            dz_arp_source_note = nn[first];
+            dz_arp_source_velocity = vv[first];
+            dz_arp_source_on = 1u;
+            if (t->p[GL_ARPKSYNC]) {
+                t->arp_pos = 0xFFFFFFFu;
+                t->arp_idx = 0xFFFFFFFFu;
+                t->arp_st = 0u;
+            }
+        }
+        for (k = idx + 1u; k < len && seq_steps(t)[k].time == ST_TIE; k++)
+            duration += step_samples(t, period, k);
+        t->seq_off = duration * gate_value / 128u;
+        if (!t->seq_off) t->seq_off = 1u;
+        return;
+    }
+#endif
     t->slide_glide = (uint8_t)slide_in;
     if (!slide_in)
         seq_release(t);
@@ -1067,8 +1156,24 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
     for (i = 0; i < m; i++)
         if (!((sk >> i) & 1u))
             t->seq_notes[t->seq_n++] = nn[i];
-    t->seq_off = gate;
-    t->seq_hold = hits == 1u && ((s->flags & SF_SLIDE) != 0 || next_tie);   /* next step a TIE: keep the notes to it */
+#if GOLANA
+    if (t == &trk[0] && dz_play_has_backup && hits == 1u) {
+        /* Song GATE applies to the entire NOTE + contiguous TIE run, not
+         * merely the last 1/16 step. Avoid wrapping into the next pattern. */
+        const step_t *steps = seq_steps(t);
+        uint32_t k, duration = step_samples(t, period, idx);
+        for (k = idx + 1u; k < len && steps[k].time == ST_TIE; ++k)
+            duration += step_samples(t, period, k);
+        t->seq_off = duration * gate_value / 128u;
+        if (!t->seq_off) t->seq_off = 1u;
+        /* Explicit acid SLIDE retains its intended legato override. */
+        t->seq_hold = (s->flags & SF_SLIDE) != 0u;
+    } else
+#endif
+    {
+        t->seq_off = gate;
+        t->seq_hold = hits == 1u && ((s->flags & SF_SLIDE) != 0 || next_tie);
+    }
 }
 
 /* MENU > CONTROL > STEP PREVIEW (1.2, Discussion #169): the UI asks for a step of a track to sound once (aud_req: step
@@ -1198,7 +1303,11 @@ static __attribute__((noinline)) void seq_nd_start(track_t *t, uint32_t period, 
 static void seq_tick(track_t *t, uint32_t n)
 {
     uint32_t period, len;
-    if (t->seq_n && !t->seq_hold) {
+    if ((t->seq_n
+#if GOLANA
+        || (t == &trk[0] && dz_arp_source_on)
+#endif
+        ) && !t->seq_hold) {
         if (t->seq_off <= n)
             seq_release(t);
         else

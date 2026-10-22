@@ -175,8 +175,8 @@ int main(void)
     bad += check("layout: SLICER after DETUNE, then the matrix just before P_E0",
                  P_SLCR == P_DETUNE + 1 && P_SLDEPTH + 1 == P_M1SRC && P_M4AMT + 1 == P_FM1_ATK && P_FM4_LEVEL + 1 == P_CHRD && P_VOIC + 1 == P_LN0 &&
                  P_LN7 + 1 == P_LSYNC && P_LSYNC + 3 == P_SQNT && P_SQNT + 1 == P_SPRD && P_SPRD + 1 == P_ITYPE &&
-                 P_ITYPE + 4 == P_IMIX && P_IMIX + 1 == P_FTYPE && P_FTYPE + 1 == P_ESYNC && P_ESYNC + 1 == P_E0 && P_E0 == 103 &&
-                 P_COUNT == PROJ_NP_V3 + 54u && PROJ_NP_V3 == PROJ_NP_V2 + 4u);
+                 P_ITYPE + 4 == P_IMIX && P_IMIX + 1 == P_FTYPE && P_FTYPE + 1 == P_ESYNC && P_ESYNC + 1 == P_GLSYNTH && P_GLB_SUB + 1 == P_E0 && P_E0 == 110 &&
+                 P_COUNT == PROJ_NP_V3 + 61u && PROJ_NP_V3 == PROJ_NP_V2 + 4u);
     bad += check("FUN10 fits one flash object, the retained cache in NOINIT", sizeof(project_store_t) <= 4096u - 256u &&
                  sizeof(project_store_t) == 3840u && 0xC8u + 4u * sizeof(project_store_t) <= 0x3D50u);
 
@@ -418,9 +418,9 @@ int main(void)
         project_t a, c;
         project_store_t st, st2;
         uint32_t i, zero = 1;
-        bad += check("FUN10 name at the end of the reserved tail, the FM6 patches before it, after the data (16 spare)",
+        bad += check("FUN10 name at the end of the reserved tail, the FM6 patches before it, after the data (12 spill)",
                      PROJ_NAME_OFF == 3824u && PROJ_FM6_OFF == 3312u && 68u + NTRK * (P_COUNT + 2u + NSTEP * 9u) +
-                     sizeof(chain_config_t) + sizeof(motion_store_t) + 16u == PROJ_FM6_OFF);
+                     sizeof(chain_config_t) + sizeof(motion_store_t) == PROJ_FM6_OFF + 12u);
         memset(&a, 0, sizeof a);
         a.magic = PROJ_MAGIC; a.size = sizeof a; a.parts = NPART; a.phys = PROJ_PHYS;
         chain_defaults(&a.chain);
@@ -684,6 +684,42 @@ int main(void)
         ok = proj_import(&c, &buf, (int)sizeof w4) && PERC_OK(c);
         bad += check("FUN4 with a SAMPLE PERC track: DRUM's kit, the same", ok);
 #undef PERC_OK
+    }
+    {   /* A full FUN10 with 128 motion records must survive the 12-byte spill into FM6 high bits.
+         * The original lower seven patch bits, every BRUTE param and the name stay intact. */
+        project_t a, c;
+        static project_store_t st;
+        uint32_t j, k;
+        memset(&a, 0, sizeof a);
+        a.magic = PROJ_MAGIC; a.size = sizeof a; a.parts = NPART; a.phys = PROJ_PHYS;
+        chain_defaults(&a.chain);
+        memcpy(a.name, "FULL MOTION", 11);
+        for (j = 0; j < NTRK; j++) {
+            a.t[j].engine = 0u;
+            a.t[j].p[P_GLSYNTH] = (int16_t)j;
+            a.t[j].p[P_GLBRUTE] = (int16_t)(20u + j);
+            a.t[j].p[P_GLBULTRA] = (int16_t)(30u + j);
+            a.t[j].p[P_GLBPWM] = (int16_t)(40u + j);
+            a.t[j].p[P_GLBMETAL] = (int16_t)(50u + j);
+            a.t[j].p[P_GLB_SUB] = (int16_t)(60u + j);
+            for (k = 0; k < FM6_PACKED; k++) a.fm6[j][k] = (uint8_t)((k * 7u + j * 13u) & 127u);
+        }
+        a.motion.count = MOTION_MAX;
+        a.motion.on = 1;
+        for (j = 0; j < MOTION_MAX; j++) {
+            a.motion.event[j].place = (uint8_t)j;
+            a.motion.event[j].param = (uint8_t)P_REV;
+            a.motion.event[j].value = (int8_t)((int32_t)(j % 120u) - 55);
+        }
+        a.sum = proj_sum(&a);
+        ok = motion_valid(&a.motion) && proj_pack(&st, &a) && proj_import(&c, &st, sizeof st);
+        if (ok) {
+            ok &= !memcmp(&a.motion, &c.motion, sizeof a.motion) &&
+                  !memcmp(a.fm6, c.fm6, sizeof a.fm6) &&
+                  !memcmp(a.name, c.name, PROJ_NAME_LEN) &&
+                  !memcmp(a.t, c.t, sizeof a.t);
+        }
+        bad += check("FUN10 extension: all 128 motion records, FM6 patches and BRUTE params", ok);
     }
     printf("%s\n", bad ? "PROJECT FORMAT TEST FAILED" : "project format test passed");
     return bad != 0;
