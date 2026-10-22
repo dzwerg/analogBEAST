@@ -1,46 +1,109 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="de">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>analogBEAST v1.0</title>
+<meta name="theme-color" content="#10131a">
+<meta name="description" content="analogBEAST v1.0 für M-VAVE FM-1: zwei Synth-Routings, digitaler Steiner-Parker-Filter, 128 Patterns, 32 Songs, 4 Albums und drei Browser-Anwendungen.">
+<title>analogBEAST v1.0 — Synthesizer · Sequencer · SONG · ALBUM</title>
 <style>
-body{background:#0d1016;color:#eef0f4;font:16px system-ui;margin:0}
-main{max-width:850px;margin:10vh auto;padding:24px}
-h1{color:#f5a14c;font-size:46px;margin-bottom:4px}
-p{color:#aeb6c3;line-height:1.6}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:40px}
-a.card{display:block;background:#1a202a;border:1px solid #39414d;
-padding:25px;border-radius:12px;text-decoration:none;color:#fff}
-a.card:hover{border-color:#f5a14c}
-b{color:#f5a14c;font-size:21px}
-small{display:block;color:#aeb6c3;margin-top:12px}
-footer{margin-top:48px}
-footer a{color:#f5a14c}
+:root{color-scheme:dark;--bg:#10131a;--panel:#191e29;--panel2:#232a38;--border:#343d50;--text:#f1f3f8;--sub:#b1bccd;--orange:#ffa83e;--orange2:#ffd09a}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:radial-gradient(900px 700px at 77% -10%,#452d1e 0%,transparent 58%),var(--bg);color:var(--text);font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}
+a{color:var(--orange2)}a:focus-visible,button:focus-visible{outline:3px solid var(--orange);outline-offset:4px}
+.container{max-width:1110px;margin:0 auto;padding:0 24px}
+header{border-bottom:1px solid var(--border);background:#10131acc}
+nav{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;padding:15px 0}
+.logo{font-size:21px;font-weight:850;letter-spacing:-.03em;text-decoration:none;color:var(--orange)}
+nav .links{display:flex;gap:18px;flex-wrap:wrap;font-size:14px}
+nav .links a{text-decoration:none;color:#d4dbe5}
+.hero{padding:79px 0 67px;position:relative}
+.kicker{font-size:12px;font-weight:750;letter-spacing:.19em;color:var(--orange);text-transform:uppercase}
+h1{font-size:clamp(3.8rem,9vw,7.5rem);line-height:1.04;letter-spacing:-.072em;margin:15px 0 23px;color:var(--orange)}
+h1 span{color:#fff}
+.lead{max-width:870px;font-size:clamp(1.18rem,2.1vw,1.64rem);line-height:1.45;font-weight:570;margin:0}
+.sub{color:var(--sub);max-width:770px}
+.actions{display:flex;gap:12px;flex-wrap:wrap;margin:32px 0}
+.button{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:10px 20px;border-radius:9px;border:1px solid var(--border);color:#f4f6fa;text-decoration:none;font-weight:720;background:#222a37}
+.button.primary{background:var(--orange);border-color:var(--orange);color:#1e160b}
+.button:hover{filter:brightness(1.11)}
+.statgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:28px 0 0}
+.stat{border:1px solid var(--border);border-radius:12px;padding:17px;background:#1b202b}
+.stat strong{font-size:clamp(1.5rem,3vw,2.4rem);line-height:1.2;display:block;color:var(--orange)}
+.stat small{color:var(--sub);display:block;line-height:1.3;margin-top:8px}
+section{margin:64px 0}
+h2{font-size:clamp(1.8rem,3.8vw,2.6rem);line-height:1.18;letter-spacing:-.04em;margin:0 0 15px}
+h3{font-size:1.25rem;letter-spacing:-.025em;margin:0 0 8px}
+p{margin:0 0 16px}.muted{color:var(--sub)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.card{border:1px solid var(--border);border-radius:15px;background:var(--panel);padding:26px}
+.card.brute{border-color:#986032;background:linear-gradient(150deg,#302116 0%,#191e29 68%)}
+.card p,.card li{color:#c5ccd8}
+.card ul{margin:10px 0 0;padding-left:21px}
+.tag{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--orange);font-weight:800;margin-bottom:11px}
+.flow{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0 0}
+.flow span{border:1px solid #5c4935;background:#251f1d;color:#ffd5a5;padding:7px 10px;border-radius:7px;font-size:13px;font-weight:650}
+.tools{grid-template-columns:repeat(3,minmax(0,1fr))}
+.tool{display:block;text-decoration:none;color:var(--text);transition:transform .15s,border-color .15s}
+.tool:hover{transform:translateY(-3px);border-color:var(--orange)}
+.tool .arrow{color:var(--orange);font-size:22px}
+.grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.pill{display:inline-block;background:#35291e;color:#ffc580;border:1px solid #835a30;border-radius:99px;padding:3px 11px;font-weight:700;font-size:12px}
+.tablewrap{overflow:auto;border:1px solid var(--border);border-radius:12px}
+table{width:100%;border-collapse:collapse;min-width:460px}th,td{text-align:left;padding:13px 17px;border-bottom:1px solid var(--border)}th{background:#252d3c;color:var(--orange2)}tr:last-child td{border-bottom:0}
+.warning{border-left:3px solid var(--orange);padding:13px 18px;background:#25221f;color:#e8dfd1;border-radius:0 9px 9px 0}
+footer{border-top:1px solid var(--border);padding:35px 0 55px;color:var(--sub);font-size:13px}
+footer a{margin-right:14px}
+details{border:1px solid var(--border);padding:18px 22px;border-radius:12px;background:#171c25}
+summary{font-weight:750;cursor:pointer;color:var(--orange2)}
+@media(max-width:750px){.hero{padding:55px 0}.statgrid{grid-template-columns:repeat(2,minmax(0,1fr))}.grid,.tools,.grid-3{grid-template-columns:1fr}section{margin:49px 0}.card{padding:21px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.tool{transition:none}}
 </style>
 </head>
 <body>
-<main>
-<h1>analogBEAST</h1>
-<p>v1.0 · Synthesizer & Sequencer Firmware für M-VAVE FM-1</p>
-<div class="grid">
-<a class="card" href="webapp/editor/">
-<b>SYNTH STUDIO</b>
-<small>Instrumente · ARP · Pattern · SONG · ALBUM</small>
-</a>
-<a class="card" href="emu/">
-<b>WEB EMULATOR</b>
-<small>FM-1 direkt im Browser ausprobieren</small>
-</a>
-<a class="card" href="webapp/installer/">
-<b>WEB INSTALLER</b>
-<small>Firmware v1.0 über USB installieren</small>
-</a>
+<header><div class="container"><nav>
+<a class="logo" href="./">analogBEAST <small style="font-size:13px;color:#c7ced7">v1.0</small></a>
+<div class="links"><a href="#synth">Synthesizer</a><a href="#sequencer">Sequencer</a><a href="#tools">Web-Apps</a><a href="https://github.com/dzwerg/analogBEAST">GitHub ↗</a></div>
+</nav></div></header>
+<main class="container">
+<div class="hero">
+<div class="kicker">Alternative Firmware · M-VAVE FM-1 · Open Source</div>
+<h1>analog<span>BEAST</span></h1>
+<p class="lead">Zwei unterschiedliche Synth-Routings. Ein bissiger Steiner-Parker-Filter. Acht Pattern-Bänke. Vollständiger SONG MODE und ALBUM MODE.</p>
+<p class="sub" style="margin-top:19px">Aus dem FM-1 wird ein eigenständiges Instrument zum Klangschrauben, Sequenzieren und Abspielen kompletter Musikstücke — inklusive Webeditor, Emulator und USB-Webinstaller.</p>
+<div class="actions"><a class="button primary" href="webapp/editor/">Synth Studio öffnen ↗</a><a class="button" href="emu/">Emulator ausprobieren ↗</a><a class="button" href="webapp/installer/">Firmware installieren ↗</a></div>
+<div class="statgrid">
+<div class="stat"><strong>2</strong><small>unterschiedliche Synth-Routings</small></div>
+<div class="stat"><strong>128</strong><small>Patterns in 8 Bänken</small></div>
+<div class="stat"><strong>32</strong><small>Songs × bis zu 64 Einträge</small></div>
+<div class="stat"><strong>4</strong><small>Albums × bis zu 32 Songs</small></div>
 </div>
-<footer>
-<a href="https://github.com/dzwerg/analogBEAST">GitHub · Source</a>
- · <a href="https://github.com/dzwerg/analogBEAST/releases/tag/v1.0">Release v1.0</a>
-</footer>
+</div>
+<section id="synth"><div class="tag">KLANGERZEUGUNG</div><h2>Eine Engine. Zwei Klangwelten.</h2>
+<p class="muted">MIKROKORG und BRUTE sind zwei getrennte digitale Signalwege innerhalb der GOLANA-Synthese, nicht nur zwei Preset-Listen.</p>
+<div class="grid">
+<article class="card"><div class="tag">ROUTING 01</div><h3>MIKROKORG</h3><p>Der klassisch virtuell-analoge Weg mit zwei Oszillatoren, Sync, Ringmodulation, Filtern, Hüllkurven, LFOs und Effekten. Von warmen Pads bis zu prägnanten Leads und Bässen.</p><div class="flow"><span>OSC 1 + OSC 2</span><span>Filter</span><span>Modulation</span><span>FX</span></div></article>
+<article class="card brute"><div class="tag">ROUTING 02 · SOUND-HIGHLIGHT</div><h3>BRUTE + Steiner-Parker</h3><p>Ein eigener Oszillator- und Filterpfad mit ULTRASAW, PWM, METAL-Wavefolding, Sub/Obertönen und Brute Factor Feedback. Sein digitaler Steiner-Parker-inspirierter LP/BP/HP-Filter setzt auf nichtlineare Sättigung und Resonanz.</p><div class="flow"><span>SAW / PULSE / TRI</span><span>ULTRASAW / METAL</span><span>BRUTE FACTOR</span><span>STEINER LP/BP/HP</span></div></article>
+</div><p class="muted" style="margin-top:13px;font-size:13px">Steiner-Parker, microKORG und Brute beschreiben klangliche Inspiration. Kein Anspruch auf schaltungsgenaue Emulation oder Herstellerzugehörigkeit.</p></section>
+<section id="sequencer"><div class="tag">SEQUENCING · PERFORMANCE</div><h2>128 Patterns. 32 Songs. 4 Albums.</h2>
+<div class="tablewrap"><table><thead><tr><th>Pattern-Bank</th><th>Patterns</th><th>Steps je Pattern</th></tr></thead><tbody><tr><td><strong>A, B, C, D</strong></td><td>Je 16 = 64</td><td><strong>Bis zu 64</strong></td></tr><tr><td><strong>E, F, G, H</strong></td><td>Je 16 = 64</td><td><strong>Bis zu 16</strong></td></tr></tbody></table></div>
+<div class="grid-3" style="margin-top:18px">
+<article class="card"><div class="tag">PATTERN</div><h3>Step-Editor</h3><p>Noten, Velocity, Gate, Swing, Auflösung und Step-Flags direkt bearbeiten. Lange Melodiephrasen und kurze Variationen im selben Gerät.</p></article>
+<article class="card"><div class="tag">SONG MODE</div><h3>32 komplette Songs</h3><p>Bis zu 64 Einträge pro Song. Patterns verketten und TEMPO, PRESET, REST, ARP sowie END im Ablauf verwenden. ONCE/REPEAT.</p></article>
+<article class="card"><div class="tag">ALBUM MODE</div><h3>4 ganze Sets</h3><p>Bis zu 32 Song-Einträge pro Album. Musikstücke in Reihenfolge abspielen — für Live-Sets, Demos und komplette Liedersammlungen.</p></article>
+</div></section>
+<section><div class="tag">SOUND & MIDI</div><h2>32 Instrumente — P01 bis P32</h2><p>Werkssounds auf P01–P16, zusätzliche INIT-/Benutzerplätze auf P17–P32. Program Change via USB MIDI, Live-Parameterbearbeitung und Speicherung von Sounds über SAVE am FM-1.</p></section>
+<section id="tools"><div class="tag">DIREKT IM BROWSER</div><h2>Drei Web-Anwendungen. Kein eigener Server nötig.</h2>
+<div class="grid tools">
+<a class="card tool" href="webapp/editor/"><div class="tag">01 · EDIT</div><h3>Synth Studio</h3><p>Klänge P01–P32, MIKROKORG/BRUTE-Parameter, ARP, grafische Patterns, SONG/ALBUM und MIDI-Song-Import.</p><span class="arrow">↗</span></a>
+<a class="card tool" href="emu/"><div class="tag">02 · PLAY</div><h3>Web-Emulator</h3><p>FM-1-Firmware als WebAssembly-Gerät direkt im Browser ausprobieren — auch ohne angeschlossene Hardware.</p><span class="arrow">↗</span></a>
+<a class="card tool" href="webapp/installer/"><div class="tag">03 · INSTALL</div><h3>USB-Webinstaller</h3><p>Das Firmwarepaket über einen kompatiblen Web-MIDI-/SysEx-Browser auf den FM-1 übertragen.</p><span class="arrow">↗</span></a>
+</div>
+<p class="warning" style="margin-top:17px"><strong>Vor dem Flashen:</strong> Eigene Sounds, Patterns und Songs sichern. Für den USB-Webinstaller sind ein Datenkabel, Chrome/Edge oder ein anderer kompatibler Browser und die MIDI-/SysEx-Freigabe nötig. Vor einem Update die Geräteerkennung prüfen.</p>
+</section>
+<section><details><summary>English — project overview</summary><div style="padding-top:16px"><p><strong>analogBEAST v1.0</strong> is alternative open-source synthesizer and sequencer firmware for the M-VAVE FM-1. It features two distinct digital signal routings within the GOLANA engine: a classic virtual-analog <strong>MIKROKORG</strong> direction and an aggressive <strong>BRUTE</strong> path with ULTRASAW, PWM, metallic wavefolding, Brute Factor feedback and a nonlinear <strong>digital Steiner-Parker-inspired LP/BP/HP filter</strong>.</p><p>Eight banks (A–H) provide 128 pattern slots: A–D support up to 64 steps and E–H up to 16. <strong>SONG MODE</strong> stores 32 songs of up to 64 rows each; <strong>ALBUM MODE</strong> provides four albums with up to 32 song entries each. The browser tools include a graphical Synth Studio, WebAssembly FM-1 emulator, and USB firmware installer.</p><p><a href="https://github.com/dzwerg/analogBEAST/blob/main/README.en.md">Read the complete English documentation →</a></p></div></details></section>
 </main>
+<footer><div class="container"><p><a href="https://github.com/dzwerg/analogBEAST">GitHub Source</a><a href="https://github.com/dzwerg/analogBEAST/releases/tag/v1.0">Release v1.0</a><a href="https://github.com/dzwerg/analogBEAST/blob/main/README.de.md">Deutsch</a><a href="https://github.com/dzwerg/analogBEAST/blob/main/README.en.md">English</a></p><p>Based on <a href="https://github.com/hugelton/Felucca">Felucca</a> (Leo Kuroshita / Hügelton Instruments) and <a href="https://github.com/Gadlele/Golana">Golana</a>. GPL-3.0. Original licensing and attribution retained. Independent community project, unaffiliated with M-VAVE, Arturia or Korg.</p></div></footer>
 </body>
 </html>
