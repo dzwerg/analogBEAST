@@ -32,6 +32,10 @@ typedef struct {
     uint8_t song_id, album_id, album_pos, row_pos;
     uint8_t tempo, preset, arp_on;
     uint8_t tempo_changed, preset_changed, arp_changed;
+    /* 1.1 playback-only state: no changes to saved patterns/song/NOR records. */
+    uint8_t step_start, repeat_left, pending_repeat, pending_start, pending_end;
+    uint8_t begin_valid, begin_row, begin_repeat;
+    int8_t octave, transpose;
 } ab5_play_t;
 /* Pure RAM playback iterator: returns 1 if a timed row/pattern is ready, else 0.
  * No audio, UI, MIDI or flash side effects. Album mode ignores per-song loop;

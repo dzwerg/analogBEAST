@@ -1,8 +1,8 @@
-# analogBEAST v1.0 — Full Documentation (English)
+# analogBEAST v1.1 — Full Documentation (English)
 
 **Custom synthesizer and sequencer firmware for the M-VAVE FM-1**
 
-[Home](https://dzwerg.github.io/analogBEAST/) · [Synth Studio](https://dzwerg.github.io/analogBEAST/webapp/editor/) · [Web Emulator](https://dzwerg.github.io/analogBEAST/emu/) · [Web Installer](https://dzwerg.github.io/analogBEAST/webapp/installer/) · [Release v1.0](https://github.com/dzwerg/analogBEAST/releases/tag/v1.0) · [Deutsch](README.de.md)
+[Home](https://dzwerg.github.io/analogBEAST/) · [Synth Studio](https://dzwerg.github.io/analogBEAST/webapp/editor/) · [Web Emulator](https://dzwerg.github.io/analogBEAST/emu/) · [Web Installer](https://dzwerg.github.io/analogBEAST/webapp/installer/) · [Release v1.1](https://github.com/dzwerg/analogBEAST/releases/tag/v1.1) · [Deutsch](README.de.md)
 
 ## Beyond a single synth patch
 
@@ -63,6 +63,17 @@ Parameters are editable on the hardware and through the Web Studio. **Permanent 
 
 **Eight banks × 16 slots = 128 patterns.** Use the longer banks for full melodic phrases and the shorter banks for grooves, accents, fills and variations. Editing includes individual notes, velocity, gate, swing, step types/flags and rhythmic resolution, with hardware REC pages and a graphical browser editor.
 
+## New in v1.1 — Advanced arrangement and live control
+
+- **OCTAVE** (−3…+3 octaves) and **TRANSPOSE** (−24…+24 semitones) affect playback without altering stored pattern notes.
+- **REPEAT, JUMP and ENDSTEP** play a selected range of the next pattern up to 64 times in total.
+- **BEGIN** repeats a SONG at its END even in ONCE, without forcing an ALBUM loop.
+- On the PLAY page, **8 black keys** select BANK A–H and **16 white keys** select PATTERN 01–16. During PATTERN transport, NEXT changes occur at the boundary.
+- Live **PRESET** and **TEMPO** adjustments, octave buttons and note-following LEDs.
+- Updated Web Piano Roll pitch editing/undo and Python SysEx command support.
+
+See the [v1.1 release notes](docs/RELEASE_NOTES-v1.1.md), [German usage guide](docs/ANLEITUNG-v1.1.de.md) and [QA record](docs/QA-v1.1.md). The v1.0 song/backup format remains compatible.
+
 ## SONG MODE — 32 full arrangements
 
 Compose **up to 32 songs**, each with **up to 64 entries/commands**. The SONG data model supports:
@@ -97,9 +108,10 @@ USB MIDI integrates analogBEAST with computers and other MIDI-capable devices. T
 
 ## Download, identity and safety
 
-- [GitHub Release v1.0](https://github.com/dzwerg/analogBEAST/releases/tag/v1.0)
-- [Firmware package `.fwsc`](https://github.com/dzwerg/analogBEAST/releases/download/v1.0/analogBEAST-v1.0.fwsc)
-- [Web emulator ZIP](https://github.com/dzwerg/analogBEAST/releases/download/v1.0/analogBEAST-v1.0-webemu.zip)
+- [GitHub Release v1.1](https://github.com/dzwerg/analogBEAST/releases/tag/v1.1)
+- [Previous v1.0 Release](https://github.com/dzwerg/analogBEAST/releases/tag/v1.0)
+- [Firmware package `analogBEAST-v1.1.fwsc`](https://github.com/dzwerg/analogBEAST/releases/download/v1.1/analogBEAST-v1.1.fwsc)
+- [Existing web emulator ZIP (v1.0)](https://github.com/dzwerg/analogBEAST/releases/download/v1.0/analogBEAST-v1.0-webemu.zip)
 
 The firmware intentionally retains package identity **`FM-1_901`** and the compatible **`Felucca Update`** bootloader label. Do not change either just to rebrand the project. Flashing custom firmware is done at your own risk; keep backups of user presets, patterns, songs and projects.
 

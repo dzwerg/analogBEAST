@@ -86,6 +86,14 @@ int ab5_extra_validate(const ab5_extra_t *m) {
                 /* REST can cover 1..64 1/16 steps. */
             }else if(row->bank==AB5_CMD_ARP){
                 if(row->value>1u)return -11;
+            }else if(row->bank>=AB5_CMD_OCTAVE && row->bank<=AB5_CMD_BEGIN){
+                if(row->pattern!=0u)return -12;
+                if(row->bank==AB5_CMD_OCTAVE && row->value>6u)return -12;
+                if(row->bank==AB5_CMD_TRANSPOSE && row->value>48u)return -12;
+                if((row->bank==AB5_CMD_REPEAT || row->bank==AB5_CMD_JUMP ||
+                    row->bank==AB5_CMD_ENDSTEP) &&
+                   (row->value<1u || row->value>64u))return -12;
+                if(row->bank==AB5_CMD_BEGIN && row->value!=0u)return -12;
             }else return -12;
         }
     }

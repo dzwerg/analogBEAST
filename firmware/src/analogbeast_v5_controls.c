@@ -26,6 +26,10 @@ static int row_value(const ab_song_row_t *row)
     if (row->bank == AB5_CMD_PRESET) return (int)row->value + 1;
     if (row->bank == AB5_CMD_ARP) return row->value;
     if (row->bank == AB5_CMD_REST) return row->play_steps;
+    if (row->bank == AB5_CMD_OCTAVE) return (int)row->value-3;
+    if (row->bank == AB5_CMD_TRANSPOSE) return (int)row->value-24;
+    if (row->bank == AB5_CMD_REPEAT || row->bank == AB5_CMD_JUMP ||
+        row->bank == AB5_CMD_ENDSTEP) return row->value;
     return 0;
 }
 int ab5_ui_range(const ab5_extra_t *m,unsigned id,int *lo,int *hi)
@@ -44,7 +48,7 @@ int ab5_ui_range(const ab5_extra_t *m,unsigned id,int *lo,int *hi)
         break;
     case AB5_UI_SONG: *hi=AB5_SONGS; break;
     case AB5_UI_ROW: *hi=AB5_ROWS; break;
-    case AB5_UI_KIND: *lo=0; *hi=AB5_CMD_ARP; break;
+    case AB5_UI_KIND: *lo=0; *hi=AB5_CMD_BEGIN; break;
     case AB5_UI_VALUE:
         row=row_const(m);
         if (row->bank<AB5_BANKS) *hi=AB5_PAT_PER_BANK;
@@ -52,6 +56,10 @@ int ab5_ui_range(const ab5_extra_t *m,unsigned id,int *lo,int *hi)
         else if (row->bank==AB5_CMD_PRESET) *hi=32;
         else if (row->bank==AB5_CMD_ARP) {*lo=0;*hi=1;}
         else if (row->bank==AB5_CMD_REST) *hi=AB_STEPS;
+        else if (row->bank==AB5_CMD_OCTAVE) {*lo=-3;*hi=3;}
+        else if (row->bank==AB5_CMD_TRANSPOSE) {*lo=-24;*hi=24;}
+        else if (row->bank==AB5_CMD_REPEAT || row->bank==AB5_CMD_JUMP ||
+                 row->bank==AB5_CMD_ENDSTEP) {*lo=1;*hi=64;}
         else {*lo=0;*hi=0;}
         break;
     case AB5_UI_STEPS:
@@ -119,6 +127,10 @@ static void kind_default(ab_song_row_t *r,uint8_t kind)
         r->play_steps=AB5_EXTRA_STEPS;
     if (kind==AB5_CMD_END) r->pattern=AB5_CMD_END_PATTERN;
     if (kind==AB5_CMD_TEMPO) r->value=120u;
+    if (kind==AB5_CMD_OCTAVE) r->value=3u;
+    if (kind==AB5_CMD_TRANSPOSE) r->value=24u;
+    if (kind==AB5_CMD_REPEAT || kind==AB5_CMD_JUMP) r->value=1u;
+    if (kind==AB5_CMD_ENDSTEP) r->value=64u;
 }
 int ab5_ui_set(ab5_extra_t *m,unsigned id,int value)
 {
@@ -173,6 +185,10 @@ int ab5_ui_set(ab5_extra_t *m,unsigned id,int value)
         else if (r->bank==AB5_CMD_PRESET) r->value=(uint8_t)(value-1);
         else if (r->bank==AB5_CMD_ARP) r->value=(uint8_t)value;
         else if (r->bank==AB5_CMD_REST) r->play_steps=(uint8_t)value;
+        else if (r->bank==AB5_CMD_OCTAVE) r->value=(uint8_t)(value+3);
+        else if (r->bank==AB5_CMD_TRANSPOSE) r->value=(uint8_t)(value+24);
+        else if (r->bank==AB5_CMD_REPEAT || r->bank==AB5_CMD_JUMP ||
+                 r->bank==AB5_CMD_ENDSTEP) r->value=(uint8_t)value;
         else return -1;
         if (song_now(m)->count<=m->song_cursor)
             song_now(m)->count=(uint8_t)(m->song_cursor+1u);

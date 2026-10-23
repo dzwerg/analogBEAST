@@ -31,7 +31,7 @@ def number(v, lo, hi, name):
 def row_valid(r):
     if not isinstance(r,list) or len(r)!=4:raise ValueError('song row must be [bank,pattern,play_steps,value]')
     b,p,steps,val=r
-    for x,a,z,t in ((b,0,12,'bank'),(p,0,127,'pattern'),(steps,1,64,'play_steps'),(val,0,255,'value')):
+    for x,a,z,t in ((b,0,18,'bank'),(p,0,127,'pattern'),(steps,1,64,'play_steps'),(val,0,255,'value')):
         number(x,a,z,t)
     if b<=7:
         if p>=16 or val!=0 or (b>=4 and steps>16):raise ValueError('Invalid pattern row')
@@ -42,6 +42,10 @@ def row_valid(r):
     elif b==10 and val>=32:raise ValueError('Invalid PRESET')
     elif b==11 and val!=0:raise ValueError('Invalid REST value')
     elif b==12 and val>1:raise ValueError('Invalid ARP value')
+    elif b==13 and val>6:raise ValueError('Invalid OCTAVE value')
+    elif b==14 and val>48:raise ValueError('Invalid TRANSPOSE value')
+    elif b in (15,16,17) and not 1<=val<=64:raise ValueError('Invalid REPEAT/JUMP/ENDSTEP value')
+    elif b==18 and val!=0:raise ValueError('Invalid BEGIN value')
     return r
 
 

@@ -1,17 +1,17 @@
-# analogBEAST v1.0
+# analogBEAST v1.1
 
 **Two synthesis routings. One powerful sequencer. Complete songs and albums.**
 **Zwei Synth-Routings. Ein leistungsfähiger Sequencer. Komplette Songs und Albums.**
 
 Alternative open-source synthesizer and sequencer firmware for the **M-VAVE FM-1**.
 
-[Website](https://dzwerg.github.io/analogBEAST/) · [Synth Studio](https://dzwerg.github.io/analogBEAST/webapp/editor/) · [Web Emulator](https://dzwerg.github.io/analogBEAST/emu/) · [Web Installer](https://dzwerg.github.io/analogBEAST/webapp/installer/) · [Download v1.0](https://github.com/dzwerg/analogBEAST/releases/tag/v1.0)
+[Website](https://dzwerg.github.io/analogBEAST/) · [Synth Studio](https://dzwerg.github.io/analogBEAST/webapp/editor/) · [Web Emulator](https://dzwerg.github.io/analogBEAST/emu/) · [Web Installer](https://dzwerg.github.io/analogBEAST/webapp/installer/) · [Download v1.1](https://github.com/dzwerg/analogBEAST/releases/tag/v1.1)
 
-**Documentation:** [English](README.en.md) · [Deutsch](README.de.md) · [Release notes](docs/RELEASE_NOTES-v1.0.md)
+**Documentation:** [English](README.en.md) · [Deutsch](README.de.md) · [Release notes](docs/RELEASE_NOTES-v1.1.md)
 
 ## At a glance / Auf einen Blick
 
-| Feature / Merkmal | analogBEAST v1.0 |
+| Feature / Merkmal | analogBEAST v1.1 |
 |---|---|
 | Synthesis / Synthese | **MIKROKORG** and **BRUTE** — two distinct DSP signal paths within GOLANA |
 | BRUTE filter / Filter | **Digital Steiner-Parker-inspired**, low-pass / band-pass / high-pass, nonlinear saturation |
@@ -21,10 +21,20 @@ Alternative open-source synthesizer and sequencer firmware for the **M-VAVE FM-1
 | Banks E–H / Bänke E–H | Up to **16 steps** per pattern |
 | SONG MODE | **32 songs**, up to **64 rows/commands** each |
 | ALBUM MODE | **4 albums**, up to **32 song entries** each |
-| Song commands / Befehle | PATTERN, TEMPO, PRESET, REST, ARP, END |
+| Song commands / Befehle | PATTERN, TEMPO, PRESET, REST, ARP, END + OCTAVE, TRANSPOSE, REPEAT, JUMP, ENDSTEP, BEGIN |
 | Browser tools / Browser-Werkzeuge | Synth Studio, graphical SONG/ALBUM editor, MIDI-song import, WebAssembly emulator, USB web installer |
 | MIDI | USB MIDI; Program Change P01–P32; pattern/song transfer tools |
 | Firmware package identity | `FM-1_901` (kept for updater compatibility) |
+
+## New in v1.1 / Neu in Version 1.1
+
+**Six additional SONG commands:** `OCTAVE`, `TRANSPOSE`, `REPEAT`, `JUMP`, `ENDSTEP`, `BEGIN`; play a subrange of a pattern several times, change pitch without rewriting notes and create continuous SONG loops.
+
+**Live performance:** black keys choose BANK A–H, white keys choose PATTERN 01–16; queue NEXT at the pattern boundary, adjust TEMPO/PRESET during PLAY, live octave shifts and note-following key LEDs. The Web Studio source adds transpose/octave editing and undo; the Python MIDI transfer tool understands all new commands.
+
+**Documentation:** [English release notes](docs/RELEASE_NOTES-v1.1.md) · [Deutsche Bedienungsanleitung](docs/ANLEITUNG-v1.1.de.md) · [QA record](docs/QA-v1.1.md).
+
+**Heads-up:** the public GitHub Pages web apps are deployed separately; the link above may still serve the older web assets until deployment.
 
 ## English — what makes analogBEAST different?
 
@@ -47,7 +57,8 @@ Der Sequencer bietet **acht Bänke mit insgesamt 128 Pattern-Plätzen**. Lange 6
 - **[Synth Studio / Webeditor](https://dzwerg.github.io/analogBEAST/webapp/editor/):** sound programs P01–P32, BRUTE/MIKROKORG parameters, ARP, graphical pattern/SONG/ALBUM editing and MIDI import.
 - **[Web Emulator](https://dzwerg.github.io/analogBEAST/emu/):** WebAssembly FM-1 simulation; no hardware required.
 - **[Web Installer](https://dzwerg.github.io/analogBEAST/webapp/installer/):** USB firmware update interface; requires a compatible Chrome/Edge browser and MIDI/SysEx permissions. **Back up device data first.** Verify device detection before writing.
-- **[GitHub v1.0 Release](https://github.com/dzwerg/analogBEAST/releases/tag/v1.0):** verified `.fwsc` package and emulator ZIP.
+- **[GitHub v1.1 Release](https://github.com/dzwerg/analogBEAST/releases/tag/v1.1):** hardware-tested `.fwsc` firmware package and v1.1 source.
+- **[Earlier v1.0 Release](https://github.com/dzwerg/analogBEAST/releases/tag/v1.0):** previous firmware and emulator ZIP.
 
 ## Build and safety
 

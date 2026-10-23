@@ -28,6 +28,13 @@
 #define AB5_CMD_PRESET 10u
 #define AB5_CMD_REST 11u
 #define AB5_CMD_ARP 12u
+/* V1.1: preserve all existing opcodes and the four-byte song row on NOR. */
+#define AB5_CMD_OCTAVE 13u    /* value = octave + 3, range -3..+3 */
+#define AB5_CMD_TRANSPOSE 14u /* value = semitones + 24, range -24..+24 */
+#define AB5_CMD_REPEAT 15u    /* value = total number of next-PATTERN plays, 1..64 */
+#define AB5_CMD_JUMP 16u      /* value = first step of next PATTERN, 1..64 */
+#define AB5_CMD_ENDSTEP 17u   /* value = last step of next PATTERN, 1..64 */
+#define AB5_CMD_BEGIN 18u     /* song-only loop marker, value 0 */
 #define AB5_CMD_END_PATTERN 16u
 #define AB5_STORE_REGION 0xC9000u /* 3rd user sample slot, AFTER blank FSMP header */
 #define AB5_STORE_BYTES 32768u

@@ -11,15 +11,19 @@ function integer(v,min,max,name) {if (!Number.isInteger(v)||v<min||v>max) throw 
 function validateRow(row){
  if(!Array.isArray(row)||row.length!==4)throw Error('SONG-Zeile muss 4 Zahlen enthalten');
  const [b,p,steps,val]=row;
- integer(b,0,12,'Befehl');integer(p,0,127,'Pattern');integer(steps,1,64,'Steps');integer(val,0,255,'Wert');
+ integer(b,0,18,'Befehl');integer(p,0,127,'Pattern');integer(steps,1,64,'Steps');integer(val,0,255,'Wert');
  if (b<=7) { if(p>=16||val!==0||(b>=4&&steps>16))throw Error('Ungültige Patternzeile'); }
  else if(b===8){if(p!==16||val!==0)throw Error('END: falsche Daten');}
  else if(p!==0)throw Error('Befehl: Pattern muss 0 sein');
  else if(b===9 && (val<40||val>240))throw Error('TEMPO 40..240');
  else if(b===10 && val>=32)throw Error('PRESET 0..31');
  else if(b===11 && val!==0)throw Error('REST: Wert muss 0 sein');
- else if(b===12 && val>1)throw Error('ARP: Wert 0 oder 1');
- return row;
+  else if(b===12 && val>1)throw Error('ARP: Wert 0 oder 1');
+  else if(b===13 && val>6)throw Error('OCTAVE -3..+3');
+  else if(b===14 && val>48)throw Error('TRANSPOSE -24..+24');
+  else if([15,16,17].includes(b) && (val<1||val>64))throw Error('REPEAT/JUMP/ENDSTEP 1..64');
+  else if(b===18 && val!==0)throw Error('BEGIN: Wert muss 0 sein');
+  return row;
 }
 function checkRecord(type,r){
  if(!r||typeof r!=='object'||Array.isArray(r))throw Error('Datensatz ungültig');
@@ -434,9 +438,12 @@ function BufferlessASCII(s){return [...s].map(c=>c.charCodeAt(0));}
 
  root.ABSEQ.noteName=noteName;root.ABSEQ.stepKind=stepKind;root.ABSEQ.newRecord=newRecord;root.ABSEQ.midiSmfNotes=midiSmfNotes;root.ABSEQ.midiToPattern=midiToPattern;root.ABSEQ.patternToMidi=patternToMidi;
  const fmt=n=>String(n).padStart(2,'0');
- const cmdName=b=>b<8?'PATTERN':({8:'END',9:'TEMPO',10:'PRESET',11:'REST',12:'ARP'}[b]||'?');
+ const cmdName=b=>b<8?'PATTERN':({8:'END',9:'TEMPO',10:'PRESET',11:'REST',12:'ARP',13:'OCTAVE',14:'TRANSPOSE',15:'REPEAT',16:'JUMP',17:'ENDSTEP',18:'BEGIN'}[b]||'?');
  const rowTitle=r=>r[0]<8?`${BANKS[r[0]]}${fmt(r[1]+1)} · ${r[2]} Steps`:
-  r[0]===8?'END':r[0]===9?`${r[3]} BPM`:r[0]===10?`Preset ${r[3]+1}`:r[0]===11?`Pause ${r[2]} Steps`:r[3]?'ARP ON':'ARP OFF';
+  r[0]===8?'END':r[0]===9?`${r[3]} BPM`:r[0]===10?`Preset ${r[3]+1}`:r[0]===11?`Pause ${r[2]} Steps`:
+  r[0]===12?(r[3]?'ARP ON':'ARP OFF'):r[0]===13?`OCTAVE ${r[3]-3}`:
+  r[0]===14?`TRANSPOSE ${r[3]-24}`:r[0]===15?`REPEAT ${r[3]}×`:
+  r[0]===16?`Startstep ${r[3]}`:r[0]===17?`Endstep ${r[3]}`:'BEGIN';
  let previewStop=null,previewCtx=null;
  let rollDrag=null;
  function stopPreview(){if(previewStop){previewStop();previewStop=null;}state.previewStep=-1;}
@@ -523,12 +530,17 @@ function BufferlessASCII(s){return [...s].map(c=>c.charCodeAt(0));}
    if(i<n&&i%4===0)svg+=`<text x="${x+3}" y="16" font-size="11" fill="${i%16===0?'#f2c288':'#9da9bc'}">${i+1}</text>`;
    if(i<d.length&&i%4===0)svg+=`<rect x="${x}" y="20" width="${stepW*4}" height="5" fill="#c98836" opacity=".45"/>`;
   }
+  let lastPitch=null;
   for(let i=0;i<n;i++){
    if(i>=d.length)svg+=`<rect x="${left+i*stepW}" y="26" width="${stepW}" height="${h-26}" fill="#101319" opacity=".6" pointer-events="none"/>`;
-   const s=d.steps[i],type=stepKind(s);if(type==='REST')continue;
+   const s=d.steps[i],type=stepKind(s);
+   if(type==='REST'){lastPitch=null;continue;}
    if(type==='TIE'){
-    const y=(hi-60)*rowH+26;svg+=`<rect x="${left+i*stepW+3}" y="${y}" width="${stepW-6}" height="${rowH-1}" rx="3" fill="#58859c" opacity=".85"/>`;continue;
+    if(lastPitch!==null && lastPitch>=lo && lastPitch<=hi){const y=(hi-lastPitch)*rowH+26;
+     svg+=`<rect x="${left+i*stepW+3}" y="${y}" width="${stepW-6}" height="${rowH-1}" rx="3" fill="#58859c" opacity=".85"/>`;}
+    continue;
    }
+   lastPitch=s.note;
    if(s.note<lo||s.note>hi)continue;
    const y=(hi-s.note)*rowH+26;
    const color=(s.flags&1)?'#ffe3a7':'#f1a53f';
@@ -587,7 +599,9 @@ function BufferlessASCII(s){return [...s].map(c=>c.charCodeAt(0));}
   target.innerHTML=`<div class="abseq-titlebar"><div><h2>Bank ${d.bank} · Pattern ${fmt(d.pattern)} <span class="abseq-tag">${n} STEPS${extra}</span></h2><div class="abseq-subtle">Mono-Piano-Roll · Klick setzt Note · Ziehen verschiebt · Rechtsklick löscht · Doppelklick setzt REST</div></div>
    <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><button id="abseq-audition">▶ Browser-Vorhören</button><button id="abseq-midi-import">MIDI importieren</button><input id="abseq-mid-file" type="file" accept=".mid,.midi,audio/midi" hidden><button id="abseq-midi-export">MIDI exportieren</button><button id="abseq-clear-pat">Pattern leeren</button></div></div>
    <div class="abseq-grid"><div class="abseq-card">
-    <div class="abseq-notehead"><div>PIANO ROLL <span class="abseq-subtle">C2–B6 · STEP 1–${n}</span></div><div class="abseq-subtle">1 Step = 1 Note / REST / TIE</div></div>
+     <div class="abseq-notehead"><div>PIANO ROLL <span class="abseq-subtle">C2–B6 · STEP 1–${n}</span></div>
+     <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap"><span class="abseq-subtle">TRANSPOSE</span><button data-shift="-1" title="Alle Noten einen Halbton tiefer">−1</button><button data-shift="1" title="Alle Noten einen Halbton höher">+1</button>
+     <span class="abseq-subtle">OCTAVE</span><button data-shift="-12" title="Alle Noten eine Oktave tiefer">−12</button><button data-shift="12" title="Alle Noten eine Oktave höher">+12</button></div></div>
     <div class="abseq-pianoscroll" id="abseq-roll-scroll"><div id="abseq-piano">${info.svg}</div></div>
     <div id="abseq-vel" class="abseq-velscroll"></div>
     <div class="abseq-notelegend"><span style="color:#f4b75f">■ NOTE</span><span style="color:#74b8cb">■ TIE</span><span>▤ REST</span><span>Velocity-Balken unter der Piano-Roll</span></div>
@@ -605,7 +619,17 @@ function BufferlessASCII(s){return [...s].map(c=>c.charCodeAt(0));}
     <div class="abseq-subtle">Browser-Vorhören: Gate bestimmt die hörbare NOTE-Dauer (1–127/128 der NOTE + anschließenden TIE-Steps). Klang ist nur ein Testton; Resolution bleibt ein Gerätewert.</div></aside></div>
     <div class="abseq-bar" style="display:flex;justify-content:space-between"><span>Steps ${fmt(pageN*16+1)}–${fmt(pageN*16+16)}</span><div style="display:flex;gap:6px"><button id="abseq-prev16">◀ 16</button><button id="abseq-next16">16 ▶</button></div></div>
     <div class="abseq-stepbuttons">${cards}</div>`;
-  syncScroll();bindPiano(d,info);renderVelocity(d,info);
+   syncScroll();bindPiano(d,info);renderVelocity(d,info);
+   target.querySelectorAll('[data-shift]').forEach(btn=>btn.onclick=()=>{
+    const delta=+btn.dataset.shift;
+    const notes=d.steps.filter(s=>stepKind(s)==='NOTE');
+    if(!notes.length){setStatus('Keine Noten zum Verschieben.');return;}
+    if(notes.some(s=>s.note+delta<1||s.note+delta>127)){
+     setStatus('TRANSPOSE: Note würde MIDI-Bereich 1..127 verlassen. Nichts verändert.');return;
+    }
+    notes.forEach(s=>s.note+=delta);
+    setDirty();render();setStatus(`Pattern: ${delta>0?'+':''}${delta} Halbtöne, UNDO verfügbar. Nur Browser-Entwurf.`);
+   });
   const setField=(id,key,lo,hi)=>{$(id).onchange=e=>{try{integer(+e.target.value,lo,hi,key);step[key]=+e.target.value;setDirty();render();}catch(err){setStatus(err.message);render();}};};
   setField('abseq-note','note',0,127);setField('abseq-velocity','velocity',1,127);setField('abseq-gate','gate',1,127);setField('abseq-swing','swing',0,100);setField('abseq-flags','flags',0,31);
   target.querySelectorAll('[data-flagbit]').forEach(el=>el.onchange=()=>{step.flags=el.checked?(step.flags|(+el.dataset.flagbit)):(step.flags&~(+el.dataset.flagbit));setDirty();render();});
@@ -656,20 +680,31 @@ function BufferlessASCII(s){return [...s].map(c=>c.charCodeAt(0));}
   $('abseq-audition').textContent='■ Vorhören stoppen';
   setStatus('Browser-Vorhören 120 BPM: Gate steuert NOTE-OFF; TIE verlängert die Note. Einfacher Testton, kein BRUTE-/MIDI-Audio.');
  }
- function renderSong(target,d){
+  function commandInputSpec(kind){
+   return ({TEMPO:['BPM',40,240,0],PRESET:['Preset 0–31',0,31,0],ARP:['ARP 0/1',0,1,0],
+    OCTAVE:['OCTAVE',-3,3,3],TRANSPOSE:['TRANSPOSE',-24,24,24],REPEAT:['Wiederholungen',1,64,0],
+    JUMP:['Startstep',1,64,0],ENDSTEP:['Endstep',1,64,0]})[kind]||['Wert',0,0,0];
+  }
+  function commandDefault(kind){
+   return ({TEMPO:120,PRESET:0,REST:0,ARP:1,OCTAVE:3,TRANSPOSE:24,
+    REPEAT:1,JUMP:1,ENDSTEP:64,BEGIN:0})[kind]??0;
+  }
+  const commandCode=({END:8,TEMPO:9,PRESET:10,REST:11,ARP:12,OCTAVE:13,TRANSPOSE:14,
+                     REPEAT:15,JUMP:16,ENDSTEP:17,BEGIN:18});
+  function renderSong(target,d){
   state.page=Math.min(state.page,3);
   const begin=state.page*16;
   const timeline=d.rows.slice(0,d.count).map((r,i)=>`<button type="button" class="abseq-cmd" data-jump="${i}" data-type="${cmdName(r[0])}" data-chosen="${state.selectedRow===i}"><small>${fmt(i+1)} · ${cmdName(r[0])}</small><strong>${rowTitle(r)}</strong></button>`).join('');
-  target.innerHTML=`<div class="abseq-titlebar"><div><h2>SONG ${fmt(d.song)} · Arrangement</h2><div class="abseq-subtle">Bis zu 64 Befehle · PATTERN / TEMPO / PRESET / REST / ARP / END</div></div>
+  target.innerHTML=`<div class="abseq-titlebar"><div><h2>SONG ${fmt(d.song)} · Arrangement</h2><div class="abseq-subtle">64 Zeilen · PATTERN / TEMPO / PRESET / REST / ARP / OCTAVE / TRANSPOSE / REPEAT / JUMP / ENDSTEP / BEGIN / END</div></div>
     <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap"><label>Zeilen <input id="abseq-count" type="number" min="1" max="64" value="${d.count}"></label><label>Abspielen <select id="abseq-loop">${option(0,'ONCE',d.loop===0)}${option(1,'LOOP',d.loop===1)}</select></label><button id="abseq-addrow">+ Befehl</button></div></div>
    <div class="abseq-card"><h2>Timeline</h2><div class="abseq-cmdstrip">${timeline}</div><p class="abseq-subtle">Anklicken, um eine Zeile zu bearbeiten. END stoppt den Song. Die Reihenfolge entspricht dem FM-1.</p></div>
    <div class="abseq-bar"><strong>Befehle ${fmt(begin+1)}–${fmt(begin+16)}</strong><div style="margin-left:auto;display:flex;align-items:center;gap:6px"><button id="abseq-prev">◀</button> Seite ${state.page+1} / 4 <button id="abseq-next">▶</button></div></div>
    <div class="abseq-songrows">${d.rows.slice(begin,begin+16).map((r,j)=>{const i=begin+j,t=r[0],isPattern=t<8,kind=cmdName(t),enabled=i<d.count;
     return `<div class="abseq-songrow" data-active="${enabled}" style="${!enabled?'opacity:.52;':''}"><div class="abseq-rowhead"><strong>${fmt(i+1)} · ${kind}</strong><span class="abseq-subtle">${rowTitle(r)}</span></div>
-      <div class="abseq-rowfields"><label>Typ <select data-row="${i}" data-col="kind">${['PATTERN','END','TEMPO','PRESET','REST','ARP'].map((key,j)=>option(key,key,key===kind)).join('')}</select></label>
+      <div class="abseq-rowfields"><label>Typ <select data-row="${i}" data-col="kind">${['PATTERN','END','TEMPO','PRESET','REST','ARP','OCTAVE','TRANSPOSE','REPEAT','JUMP','ENDSTEP','BEGIN'].map(key=>option(key,key,key===kind)).join('')}</select></label>
       ${isPattern?`<label>Bank <select data-row="${i}" data-col="bank">${[...BANKS].map((bank,ix)=>option(ix,bank,ix===t)).join('')}</select></label><label>Pattern <input type="number" min="1" max="16" value="${r[1]+1}" data-row="${i}" data-col="pattern"></label><label>Steps <input type="number" min="1" max="${t<4?64:16}" value="${r[2]}" data-row="${i}" data-col="steps"></label>`:
       kind==='REST'?`<label>Steps <input type="number" min="1" max="64" value="${r[2]}" data-row="${i}" data-col="steps"></label>`:
-      kind==='END'?'':`<label>${kind==='TEMPO'?'BPM':kind==='PRESET'?'Preset (0–31)':'ARP 0/1'} <input type="number" min="${kind==='TEMPO'?40:0}" max="${kind==='TEMPO'?240:kind==='PRESET'?31:1}" value="${r[3]}" data-row="${i}" data-col="value"></label>`}
+       kind==='END'||kind==='BEGIN'?'':`<label>${commandInputSpec(kind)[0]} <input type="number" min="${commandInputSpec(kind)[1]}" max="${commandInputSpec(kind)[2]}" value="${r[3]-commandInputSpec(kind)[3]}" data-row="${i}" data-col="value"></label>`}
       <button class="abseq-smallbtn" data-up="${i}" title="Befehl nach oben">↑</button><button class="abseq-smallbtn" data-down="${i}" title="Befehl nach unten">↓</button>
       </div></div>`;}).join('')}</div>`;
   $('abseq-count').onchange=e=>{try{integer(+e.target.value,1,64,'SONG-Länge');d.count=+e.target.value;setDirty();render();}catch(err){setStatus(err.message);render();}};
@@ -679,11 +714,12 @@ function BufferlessASCII(s){return [...s].map(c=>c.charCodeAt(0));}
   target.querySelectorAll('[data-jump]').forEach(b=>b.onclick=()=>{state.selectedRow=+b.dataset.jump;state.page=Math.floor(state.selectedRow/16);render();});
   target.querySelectorAll('[data-row]').forEach(el=>el.onchange=()=>{const i=+el.dataset.row,r=d.rows[i];try{
    const v=el.value,c=el.dataset.col;
-   if(c==='kind')d.rows[i]=v==='PATTERN'?[0,0,16,0]:v==='END'?[8,16,1,0]:v==='TEMPO'?[9,0,1,120]:v==='PRESET'?[10,0,1,0]:v==='REST'?[11,0,16,0]:[12,0,1,1];
+    if(c==='kind')d.rows[i]=v==='PATTERN'?[0,0,16,0]:v==='END'?[8,16,1,0]:
+     [commandCode[v],0,v==='REST'?16:1,commandDefault(v)];
    else if(c==='bank'){r[0]=+v;if(r[0]>=4)r[2]=Math.min(16,r[2]);}
    else if(c==='pattern'){integer(+v,1,16,'Pattern');r[1]=+v-1;}
    else if(c==='steps'){integer(+v,1,r[0]>=4&&r[0]<8?16:64,'Steps');r[2]=+v;}
-   else if(c==='value'){const lo=r[0]===9?40:0,hi=r[0]===9?240:r[0]===10?31:1;integer(+v,lo,hi,'Wert');r[3]=+v;}
+    else if(c==='value'){const spec=commandInputSpec(cmdName(r[0]));integer(+v,spec[1],spec[2],spec[0]);r[3]=+v+spec[3];}
    validateRow(d.rows[i]);state.selectedRow=i;setDirty();render();
   }catch(err){setStatus(err.message);render();}});
   target.querySelectorAll('[data-up],[data-down]').forEach(el=>el.onclick=()=>{const i=+(el.dataset.up??el.dataset.down),to=el.hasAttribute('data-up')?i-1:i+1;if(to<0||to>=d.count)return;[d.rows[i],d.rows[to]]=[d.rows[to],d.rows[i]];state.selectedRow=to;state.page=Math.floor(to/16);setDirty();render();});

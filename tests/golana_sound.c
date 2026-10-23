@@ -13,6 +13,7 @@
 #if defined(GOLANA) && GOLANA
 static void gu_song_begin(void) {}
 static int gu_song_next(void) { return 1; }
+static void gu_dz_playback_end(void) {}
 #endif
 #define main hostsim_main
 #include "hostsim.c"

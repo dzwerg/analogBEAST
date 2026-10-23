@@ -49,6 +49,21 @@ static void ab5_zero(void *ptr,uint32_t n)
     uint32_t i;uint8_t *d=(uint8_t *)ptr;
     for(i=0;i<n;i++)d[i]=0u;
 }
+/* Reset command state only when a NEW song starts (not a BEGIN loop). */
+static void ab5_song_reset(ab5_play_t *p)
+{
+    p->row_pos=0u;
+    p->step_start=0u;
+    p->repeat_left=0u;
+    p->pending_repeat=1u;
+    p->pending_start=1u;
+    p->pending_end=0u;
+    p->begin_valid=0u;
+    p->begin_row=0u;
+    p->begin_repeat=0u;
+    p->octave=0;
+    p->transpose=0;
+}
 static int ab5_next_song(const ab5_extra_t *m,ab5_play_t *p)
 {
     const ab5_album_t *album=&m->albums[p->album_id];
@@ -59,12 +74,16 @@ static int ab5_next_song(const ab5_extra_t *m,ab5_play_t *p)
     }
     p->album_pos=next;
     p->song_id=album->song_ids[next];
-    p->row_pos=0u;
+    ab5_song_reset(p);
     return 1;
 }
-/* Bound command-only songs/albums so infinite END/ARPs never lock the ISR. */
-static int ab5_seek_request(const ab5_extra_t *m,ab5_play_t *p,
-                            uint32_t request,uint8_t *taken)
+/* Bounded command parser; all modifiers apply to the NEXT PATTERN.
+ * JUMP/ENDSTEP and REPEAT may be given in any order. The next pattern is
+ * repeated with the same selected slice, then all three modifiers reset.
+ * BEGIN only loops in SONG PLAY. On repeats TEMPO/PRESET are ignored.
+ */
+static int ab5_seek_request(const ab5_extra_t *m,const ab_snapshot_t *v4,
+                            ab5_play_t *p,uint32_t request,uint8_t *taken)
 {
     uint32_t scanned;
     p->tempo_changed=p->preset_changed=p->arp_changed=0u;
@@ -73,11 +92,11 @@ static int ab5_seek_request(const ab5_extra_t *m,ab5_play_t *p,
         const ab5_song_t *song=&m->songs[p->song_id];
         const ab_song_row_t *row;
         if(p->row_pos>=song->count || song->rows[p->row_pos].bank==AB5_CMD_END){
-            /* Manual choice wins over LOOP and ONCE, but only at SONG END. */
+            /* Existing explicit NEXT SONG request takes priority at song END. */
             if(request && taken && !*taken){
                 uint32_t kind=request>>24, hi=(request>>8)&255u, lo=request&255u;
                 if(p->mode==AB5_MODE_SONG && kind==AB5_REQ_SONG && lo<AB5_SONGS){
-                    p->song_id=(uint8_t)lo;p->row_pos=0u;*taken=1u;continue;
+                    p->song_id=(uint8_t)lo;ab5_song_reset(p);*taken=1u;continue;
                 }
                 if(p->mode==AB5_MODE_ALBUM){
                     uint8_t slot=kind==AB5_REQ_ALBUM ? 0u : (uint8_t)lo;
@@ -86,30 +105,61 @@ static int ab5_seek_request(const ab5_extra_t *m,ab5_play_t *p,
                         p->album_id=(uint8_t)hi;
                         p->album_pos=slot;
                         p->song_id=m->albums[hi].song_ids[slot];
-                        p->row_pos=0u;*taken=1u;continue;
+                        ab5_song_reset(p);*taken=1u;continue;
                     }
                 }
             }
-            if(p->mode==AB5_MODE_ALBUM){
+            if(p->mode==AB5_MODE_SONG && p->begin_valid &&
+               p->begin_row+1u<p->row_pos){
+                p->row_pos=(uint8_t)(p->begin_row+1u);
+                p->begin_repeat=1u;
+            }else if(p->mode==AB5_MODE_ALBUM){
                 if(!ab5_next_song(m,p))break;
             }else if(song->loop && p->row_pos!=0u){
-                p->row_pos=0u;
+                ab5_song_reset(p);
             }else break;
             continue;
         }
         row=&song->rows[p->row_pos];
-        if(row->bank<AB5_BANKS || row->bank==AB5_CMD_REST){
-            p->rest=(uint8_t)(row->bank==AB5_CMD_REST);
-            if(!p->rest){p->bank=row->bank;p->pattern=row->pattern;}
+        if(row->bank<AB5_BANKS){
+            uint8_t length=ab5_pattern_length(m,v4,row->bank,row->pattern);
+            uint8_t first=p->pending_start;
+            uint8_t last=p->pending_end ? p->pending_end : row->play_steps;
+            if(last>length) last=length;
+            if(!length || first>last){p->running=0u;return 0;}
+            p->rest=0u;
+            p->bank=row->bank;
+            p->pattern=row->pattern;
+            p->step_start=(uint8_t)(first-1u);
+            p->play_steps=(uint8_t)(last-first+1u);
+            p->repeat_left=(uint8_t)(p->pending_repeat-1u);
+            p->pending_repeat=1u;p->pending_start=1u;p->pending_end=0u;
+            return 1;
+        }
+        if(row->bank==AB5_CMD_REST){
+            p->rest=1u;p->step_start=0u;
             p->play_steps=row->play_steps;
+            /* REST does not consume a pending modifier of the NEXT PATTERN. */
             return 1;
         }
         if(row->bank==AB5_CMD_TEMPO){
-            p->tempo=row->value;p->tempo_changed=1u;
+            if(!p->begin_repeat){p->tempo=row->value;p->tempo_changed=1u;}
         }else if(row->bank==AB5_CMD_PRESET){
-            p->preset=row->value;p->preset_changed=1u;
+            if(!p->begin_repeat){p->preset=row->value;p->preset_changed=1u;}
         }else if(row->bank==AB5_CMD_ARP){
             p->arp_on=(uint8_t)!!row->value;p->arp_changed=1u;
+        }else if(row->bank==AB5_CMD_OCTAVE){
+            p->octave=(int8_t)((int)row->value-3);
+        }else if(row->bank==AB5_CMD_TRANSPOSE){
+            p->transpose=(int8_t)((int)row->value-24);
+        }else if(row->bank==AB5_CMD_REPEAT){
+            p->pending_repeat=row->value;
+        }else if(row->bank==AB5_CMD_JUMP){
+            p->pending_start=row->value;
+        }else if(row->bank==AB5_CMD_ENDSTEP){
+            p->pending_end=row->value;
+        }else if(row->bank==AB5_CMD_BEGIN && p->mode==AB5_MODE_SONG && !p->begin_repeat){
+            p->begin_valid=1u;p->begin_row=p->row_pos;
         }
         p->row_pos++;
     }
@@ -132,7 +182,8 @@ int ab5_play_start(const ab5_extra_t *m,const ab_snapshot_t *v4,ab5_play_t *p)
         p->album_id=m->selected_album;
         p->song_id=a->song_ids[0];
     }else p->song_id=m->selected_song;
-    return ab5_seek_request(m,p,0u,0);
+    ab5_song_reset(p);
+    return ab5_seek_request(m,v4,p,0u,0);
 }
 int ab5_play_next_request(const ab5_extra_t *m,const ab_snapshot_t *v4,
                           ab5_play_t *p,uint32_t request,uint8_t *taken)
@@ -148,8 +199,13 @@ int ab5_play_next_request(const ab5_extra_t *m,const ab_snapshot_t *v4,
         if(!p->pattern_loop){p->running=0u;return 0;}
         return 1;
     }
+    if(p->repeat_left && !p->rest){
+        --p->repeat_left;
+        p->tempo_changed=p->preset_changed=p->arp_changed=0u;
+        return 1;
+    }
     p->row_pos++;
-    return ab5_seek_request(m,p,request,taken);
+    return ab5_seek_request(m,v4,p,request,taken);
 }
 int ab5_play_next(const ab5_extra_t *m,const ab_snapshot_t *v4,ab5_play_t *p)
 {

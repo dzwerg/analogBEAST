@@ -95,7 +95,9 @@ static uint32_t gu_dz_step_gate(uint32_t idx);
 static uint32_t gu_dz_step_samples(uint32_t idx, uint32_t period);
 static uint8_t gu_dz_arp_active(void);
 static uint8_t dz_play_has_backup; /* declared before the timing helpers */
-static volatile int8_t ab5_live_transpose; /* -12..+12, always reset on STOP */
+static volatile int8_t ab5_live_transpose; /* -12..+12 physical OCT buttons, reset on STOP */
+static volatile int8_t ab5_song_transpose, ab5_song_octave; /* v1.1 SONG commands */
+static volatile uint8_t ab5_live_next_keys; /* PLAY page: keys are control inputs, never notes */
 static volatile uint32_t ab5_switch_request; /* single 32-bit UI -> ISR request */
 #endif
 static volatile uint8_t midi_hint;       /* MIDI IN played track n - 1, which is not the selected one (the UI says so) */
@@ -912,6 +914,12 @@ static void keyboard_block(void)
                 kb_note[k] = KB_SILENT;
                 continue;
             }
+#if GOLANA
+            if (ab5_live_next_keys) {             /* 1.1 PLAY: black BANK / white PATTERN keys */
+                kb_note[k] = KB_SILENT;
+                continue;                         /* do not synthesize or send USB-MIDI */
+            }
+#endif
             if (lay) {                            /* a layer's button held (or locked): the key is the layer's */
                 kb_note[k] = KB_SILENT;           /* (ui_layer.c), with FX an effect (perform.c) */
                 kb_layer |= 1u << k;
@@ -1086,7 +1094,8 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
             x = (uint32_t)clamp(scale_snap(t, (int32_t)x), 0, 127);
 #if GOLANA
         if(t == &trk[0] && dz_play_has_backup)
-            x=(uint32_t)clamp((int32_t)x+(int32_t)ab5_live_transpose,0,127);
+            x=(uint32_t)clamp((int32_t)x+(int32_t)ab5_live_transpose +
+                 (int32_t)ab5_song_transpose+12*(int32_t)ab5_song_octave,0,127);
 #endif
         if(qseq){
             for(j=0;j<m && nn[j]!=x;j++) ;

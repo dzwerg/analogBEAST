@@ -1,8 +1,8 @@
-# analogBEAST v1.0 — Dokumentation (Deutsch)
+# analogBEAST v1.1 — Dokumentation (Deutsch)
 
 **Alternative Synthesizer- und Sequencer-Firmware für den M-VAVE FM-1**
 
-[Homepage](https://dzwerg.github.io/analogBEAST/) · [Synth Studio](https://dzwerg.github.io/analogBEAST/webapp/editor/) · [Emulator](https://dzwerg.github.io/analogBEAST/emu/) · [Web-Installer](https://dzwerg.github.io/analogBEAST/webapp/installer/) · [Release v1.0](https://github.com/dzwerg/analogBEAST/releases/tag/v1.0) · [English](README.en.md)
+[Homepage](https://dzwerg.github.io/analogBEAST/) · [Synth Studio](https://dzwerg.github.io/analogBEAST/webapp/editor/) · [Emulator](https://dzwerg.github.io/analogBEAST/emu/) · [Web-Installer](https://dzwerg.github.io/analogBEAST/webapp/installer/) · [Release v1.1](https://github.com/dzwerg/analogBEAST/releases/tag/v1.1) · [English](README.en.md)
 
 ## Ein eigenständiges Instrument statt nur eines Synth-Presets
 
@@ -64,6 +64,17 @@ Das macht **8 × 16 = 128 Patternplätze**. Die längeren Patterns sind ideal f�
 
 Der Step-Editor ermöglicht unter anderem **Note, Velocity, Gate, Swing, Auflösung sowie Step-Typ und Flags**. Das Gerät besitzt eigene REC-Seiten für die Bearbeitung. Im Browser steht zusätzlich eine grafische Bearbeitung zur Verfügung.
 
+## Neu in Version 1.1 — SONG-Kommandos und Live-Spiel
+
+- **OCTAVE (−3 bis +3 Oktaven)** und **TRANSPOSE (−24 bis +24 Halbtöne)** ändern die Wiedergabe, nicht die gespeicherten Noten.
+- **REPEAT (1–64), JUMP (1–64), ENDSTEP (1–64)** steuern Anzahl und Step-Ausschnitt des jeweils nächsten Patterns.
+- **BEGIN** wiederholt bei `END` den SONG selbst bei ONCE, nicht aber das ALBUM.
+- Im **SEQ-PLAY** wählen **8 schwarze Tasten** die Bank A–H und **16 weiße Tasten** Pattern 01–16. Während PATTERN PLAY erfolgt der NEXT-Wechsel erst am Pattern-Ende.
+- **PRESET- und TEMPO-Wechsel während PLAY**, OCT−/OCT+ für Live-Oktaven, leuchtende Notentasten.
+- **Web-Piano-Roll:** Transpose-/Octave-Knöpfe mit UNDO; Python-SysEx-Tool versteht die neuen Befehle.
+
+**[Ausführliche Anleitung mit SONG-Beispielen und Bedienung](docs/ANLEITUNG-v1.1.de.md)** · [Release Notes](docs/RELEASE_NOTES-v1.1.md). Die bestehende v1.0-Dateistruktur bleibt kompatibel.
+
 ## SONG MODE: 32 vollständige Songs
 
 Der SONG MODE kombiniert Pattern- und Steuerbefehle zu einem musikalischen Ablauf:
@@ -108,9 +119,10 @@ Die ARP-Funktionen umfassen unter anderem Laufmuster, Oktavbereich, zeitliche Au
 
 ## Download, Kompatibilität und Installation
 
-- [GitHub Release v1.0](https://github.com/dzwerg/analogBEAST/releases/tag/v1.0)
-- [Firmware-Paket `.fwsc`](https://github.com/dzwerg/analogBEAST/releases/download/v1.0/analogBEAST-v1.0.fwsc)
-- [Web-Emulator ZIP](https://github.com/dzwerg/analogBEAST/releases/download/v1.0/analogBEAST-v1.0-webemu.zip)
+- [GitHub Release v1.1](https://github.com/dzwerg/analogBEAST/releases/tag/v1.1)
+- [Vorheriges v1.0 Release](https://github.com/dzwerg/analogBEAST/releases/tag/v1.0)
+- [Firmware-Paket `analogBEAST-v1.1.fwsc`](https://github.com/dzwerg/analogBEAST/releases/download/v1.1/analogBEAST-v1.1.fwsc)
+- [Bisheriger Web-Emulator ZIP (v1.0)](https://github.com/dzwerg/analogBEAST/releases/download/v1.0/analogBEAST-v1.0-webemu.zip)
 
 Die Firmware verwendet weiterhin die Paketidentität **`FM-1_901`** und für den Update-Bootloader den Namen **`Felucca Update`**. Diese Namen haben technische Kompatibilitätsgründe. Die Firmware nicht mit einem geänderten Produktcode paketieren und vor dem Flashen Benutzerdaten sichern.
 

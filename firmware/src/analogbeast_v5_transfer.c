@@ -19,6 +19,11 @@ static int ab5_xfer_row_ok(const ab_song_row_t *r)
     if (r->bank == AB5_CMD_PRESET) return r->value < 32u;
     if (r->bank == AB5_CMD_REST) return r->value == 0u;
     if (r->bank == AB5_CMD_ARP) return r->value <= 1u;
+    if (r->bank == AB5_CMD_OCTAVE) return r->value <= 6u;
+    if (r->bank == AB5_CMD_TRANSPOSE) return r->value <= 48u;
+    if (r->bank == AB5_CMD_REPEAT || r->bank == AB5_CMD_JUMP ||
+        r->bank == AB5_CMD_ENDSTEP) return r->value >= 1u && r->value <= 64u;
+    if (r->bank == AB5_CMD_BEGIN) return r->value == 0u;
     return 0;
 }
 

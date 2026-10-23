@@ -293,10 +293,19 @@ static void gu_load_core(uint32_t k, uint32_t manual)
     str_cpy(gu.name, nm, 13);
     gu.dirty = 0;
 }
+static void gu_dz_apply_preset(uint32_t preset); /* live-safe sound-only load */
 static void gu_load(uint32_t k)
 {
     if (dz_play_has_backup)
-        return;                    /* don't replace the synth backing up PLAY */
+        { /* V1.1: change ONLY the sound, never the active sequence. */
+            fm1_irq_off();
+            seq_release(gu_t());
+            trk_all_off(gu_t());
+            gm_all_off();
+            gu_dz_apply_preset(k);
+            fm1_irq_on();
+            return;
+        }
     fm1_irq_off();
     gu_load_core(k, 1);
     fm1_irq_on();
@@ -361,8 +370,9 @@ static uint8_t gu_play_arp(void)
 static const ab_step_t *gu_play_step(uint32_t idx)
 {
     if (idx >= DZ_NSTEP) return 0;
+    if (ab5_play_active) idx += ab5_play.step_start; /* 1.1 JUMP/ENDSTEP: no stored step edits */
     return ab5_step_read(&ab5_model, &dz_model, gu_play_bank(),
-                         gu_play_pattern(), (uint8_t)idx);
+                          gu_play_pattern(), (uint8_t)idx);
 }
 static uint32_t gu_dz_step_samples(uint32_t idx, uint32_t period)
 {
@@ -412,6 +422,8 @@ static void gu_dz_play_pattern(void)
     const ab5_pattern_t *extra;
     const ab_step_t *ps;
     track_t *t = gu_t();
+    ab5_song_transpose = (ab5_play_active && ab5_play.mode!=AB5_MODE_PATTERN) ? ab5_play.transpose : 0;
+    ab5_song_octave = (ab5_play_active && ab5_play.mode!=AB5_MODE_PATTERN) ? ab5_play.octave : 0;
     if (ab5_play_active) {
         if (ab5_play.preset_changed) gu_dz_apply_preset(ab5_play.preset);
         if (ab5_play.tempo_changed) song.g[G_BPM] = (int16_t)ab5_play.tempo;
@@ -482,6 +494,7 @@ static void gu_dz_playback_end(void)
     ab5_play.running = 0u;
     ab5_play_active = 0u;
     ab5_live_transpose = 0;
+    ab5_song_transpose=0;ab5_song_octave=0;
     ab5_switch_request = 0u;
     dz_play_has_backup = 0u;
     gu.sig_head=0u;
@@ -501,6 +514,7 @@ static void gu_song_begin(void)
     dz_play_saved_arp_mode = t->p[P_AMODE];
     dz_arp_source_on = 0u;
     ab5_live_transpose = 0;
+    ab5_song_transpose=0;ab5_song_octave=0;
     ab5_switch_request = 0u;
     dz_play_has_backup = 1u;
     /* PLAY preflight takes place in gu_input(), outside the audio ISR.
@@ -1004,13 +1018,14 @@ static void gu_text(const gu_par_t *q, char *b)
     }
     if (q->id == GV_V5_KIND) {
         static const char *const KINDS[] =
-            {"A", "B", "C", "D", "E", "F", "G", "H", "END", "TEMPO", "PRESET", "REST", "ARP"};
-        str_cpy(b, KINDS[v <= AB5_CMD_ARP ? v : AB5_CMD_END], 12);
+            {"A", "B", "C", "D", "E", "F", "G", "H", "END", "TEMPO", "PRESET", "REST", "ARP",
+             "OCTAVE", "TRANSPOSE", "REPEAT", "JUMP", "ENDSTEP", "BEGIN"};
+        str_cpy(b, KINDS[v <= AB5_CMD_BEGIN ? v : AB5_CMD_END], 12);
         return;
     }
     if (q->id == GV_V5_VALUE) {
         uint8_t kind = ab5_model.songs[ab5_model.selected_song].rows[ab5_model.song_cursor].bank;
-        if (kind == AB5_CMD_END) {
+        if (kind == AB5_CMD_END || kind == AB5_CMD_BEGIN) {
             str_cpy(b, "--", 8); return;
         }
         if (kind == AB5_CMD_ARP) {
@@ -1608,8 +1623,20 @@ static void gu_leds(void)
         nl[LED_PLAY_GREEN >> 3] |= (uint8_t)(1u << (LED_PLAY_GREEN & 7u));
     led_put(nl, panel.btn[B_OCTDN], song.octave < 0);
     led_put(nl, panel.btn[B_OCTUP], song.octave > 0);
-    for (k = 0; k < 27u; k++)
-        led_put(nl, 14u + k, (int)((fm1_in.notes >> k) & 1u));
+    for (k = 0; k < 27u; k++) {
+        uint32_t lit = ab5_live_next_keys ? 0u : (fm1_in.notes >> k) & 1u;
+        /* Notes are the ONLY key LEDs in PLAY: never show BANK/NEXT selection.
+         * Compare the actual sounding notes, including song transposition.
+         * Display covers F3..G5 in the physical 27-key range. */
+        if (song.playing && dz_play_has_backup) {
+            const track_t *t=gu_t();
+            const int32_t pitch=53+(int32_t)k+12*(int32_t)song.octave;
+            uint32_t j;
+            for(j=0u;j<t->seq_n;j++) if((int32_t)t->seq_notes[j]==pitch) {lit=1u;break;}
+            if(t->arp_note && (int32_t)t->arp_note==pitch) lit=1u;
+        }
+        led_put(nl, 14u + k, (int)lit);
+    }
     if (GU_PAGES[gu.page].k[1].id == GV_STEP) {           /* SEQ STEPS: the first 8 keys show the steps */
         uint32_t m = gu_steps(), last = (uint32_t)clamp(gu_t()->p[GL_ARPLAST], 1, 8);
         for (k = 0; k < 8u; k++)
@@ -1631,6 +1658,7 @@ static void gu_go(uint32_t page)
 {
     page %= GU_NPAGE;
     gu.page = (uint8_t)(gu_page_visible(page) ? page : 0u);
+    ab5_live_next_keys = (uint8_t)(GU_PAGES[gu.page].k[0].id==GV_V5_SELECT);
     if (GU_PAGES[gu.page].btn != B_REC) gu.v5_rec_active=0u;
     if (GU_PAGES[gu.page].btn == B_SEQ) {
         uint8_t first = GU_PAGES[gu.page].k[0].id;
@@ -1795,30 +1823,17 @@ static void gu_turn(uint32_t k, int32_t s)
     gu.hot_t = fm1_ms;
 }
 
-/* Context mapping for ALGO: add {button, page-first-id, target} here.
- * The input handler never needs another navigation special case. */
-typedef struct { uint8_t button, page_first; gu_par_t target; } gu_algo_binding_t;
-static const gu_algo_binding_t GU_ALGO_BINDINGS[] = {
-    {B_HOME, GL_CUTOFF, {GV_BPM, "TEMPO", 0, 0}},
-};
+/* 1.1: ALGORITHM knob controls global tempo on ALL pages, not just HOME. */
 static void gu_algo_turn(int32_t steps)
 {
-    const gu_page_t *page = &GU_PAGES[gu.page];
-    uint32_t i;
+    static const gu_par_t tempo={GV_BPM,"TEMPO",0,0};
+    int32_t lo,hi;
+    char value[16];
     if (!steps) return;
-    for (i = 0; i < NELEM(GU_ALGO_BINDINGS); i++) {
-        const gu_algo_binding_t *binding = &GU_ALGO_BINDINGS[i];
-        if (page->btn == binding->button && page->k[0].id == binding->page_first) {
-            int32_t lo, hi;
-            char value[16];
-            gu_range(&binding->target, &lo, &hi);
-            gu_set(&binding->target, gu_get(&binding->target) + gu_accel(steps, hi - lo));
-            fmt_int(value, gu_get(&binding->target));
-            gu_say("TEMPO ", value);
-            return;
-        }
-    }
-    /* Other pages currently unassigned: never change synth/sequence silently. */
+    gu_range(&tempo,&lo,&hi);
+    gu_set(&tempo,gu_get(&tempo)+gu_accel(steps,hi-lo));
+    fmt_int(value,gu_get(&tempo));
+    gu_say("TEMPO ",value);
 }
 
 static void gu_save_open(void)
@@ -1867,13 +1882,37 @@ static void gu_input(void)
             v = ui.mpc[k];
             ui.mpc[k] = 0;
             fm1_irq_on();
-            if (!gu.dz_edit_active && !dz_play_has_backup)
+            if (!gu.dz_edit_active)
                 gu_load((v & 127u) % GL_NPROG);
             else
                 gu_say("STOP FIRST", 0);
         }
     if (ui.uboot)
         return;
+    /* 1.1 PLAY keyboard: 8 black keys = A..H, 16 white keys = P01..P16.
+     * Bank is selection only; white key queues NEXT at a pattern boundary.
+     * NEXT SONG remains the full song via the existing SONG selector. */
+    if (notes && !gu.save && ab5_live_next_keys && !gu.dz_edit_active) {
+        for(k=0u;k<27u;k++) if((notes>>k)&1u) {
+            uint32_t place=key_place(k);
+            if(key_black(k)) {
+                if(place<AB5_BANKS) ab5_model.bank=(uint8_t)place;
+            } else if(place<AB5_PAT_PER_BANK) {
+                ab5_model.pattern=(uint8_t)place;
+                if(ab5_play_active && ab5_play.mode==AB5_MODE_PATTERN &&
+                   ab5_pattern_length(&ab5_model,&dz_model,ab5_model.bank,ab5_model.pattern))
+                    ab5_switch_request=AB5_REQ(AB5_REQ_PATTERN,ab5_model.bank,ab5_model.pattern);
+                {
+                    char dst[5];
+                    uint8_t p=(uint8_t)(ab5_model.pattern+1u);
+                    dst[0]=(char)('A'+ab5_model.bank);
+                    dst[1]=(char)('0'+p/10u);dst[2]=(char)('0'+p%10u);dst[3]=0;
+                    gu_say(ab5_play_active && ab5_play.mode==AB5_MODE_PATTERN ? "NEXT " : "PATTERN ",dst);
+                }
+            }
+        }
+        ui.force=1u;
+    }
     if (notes && !gu.save && gu_pk(&GU_PAGES[gu.page],0)->id == GV_V5_EDIT_STEP &&
         ab5_model.bank>=AB5_EXISTING_BANKS && !transport_busy() && !gu.dz_edit_active) {
         for (k=0;k<27u;k++) if ((notes>>k)&1u) {
@@ -1894,7 +1933,7 @@ static void gu_input(void)
             }
     }
     s = panel_enc(EN_PRESET);
-    if (s && (gu.dz_edit_active || dz_play_has_backup)) {
+    if (s && gu.dz_edit_active) {
         gu_say("STOP FIRST", 0);
     } else if (s) {
         if (gu.save) {
@@ -2088,7 +2127,8 @@ static void gu_boot(void)
     ab5_edited_ms=ab5_last_try_ms=0u;
     gu.dz_seq_mode = 0;
     ab5_transport_armed = ab5_prepared_valid = ab5_play_active = 0u;
-    ab5_live_transpose=0; ab5_switch_request=0u; ab5_album_play_slot=0u;
+    ab5_live_transpose=0; ab5_song_transpose=0; ab5_song_octave=0;
+    ab5_live_next_keys=0; ab5_switch_request=0u; ab5_album_play_slot=0u;
     gu_load(0);
     gu.ready = 1;
     if (dz_store_import_pending)
