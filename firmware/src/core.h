@@ -36,14 +36,15 @@
                                   * by default; replaced by FM6, its sounds convert (fm4_convert.c) */
 #endif
 #if GOLANA
-#define NENGINES 14              /* 0..12 as Felucca's, 13 GOLANA (SLICE's number: Golana builds without SLICE) */
+#define NENGINES 15              /* 0..12 as Felucca's, 13 GOLANA (SLICE's number: Golana builds without SLICE) */
 #define ENGI_GOLANA 13u
+#define ENGI_B1 14u /* APPENDED; old engine preset indices retained */
 #else
 #define NENGINES (13 + FELUCCA_SLICE)   /* SLICE (13) comes last: the other engines keep their numbers */
 #endif
 #define ENGI_DIGITAL 1u          /* reserved without FELUCCA_FM4: never selectable (eng_ok), its sounds load as FM6 */
 #if GOLANA
-#define NENG_SHOWN 1             /* Golana: GOLANA only (engines.c ENGINE_ORDER) */
+#define NENG_SHOWN 4             /* USB9: GOLANA / ANALOG / LOFI; B1 pending DSP integration */
 #else
 #define NENG_SHOWN (NENGINES - !FELUCCA_FM4)   /* the engines one can pick: PRESETS, the EDIT layer, the editor,
                                                 * in the display order of engines.c ENGINE_ORDER */

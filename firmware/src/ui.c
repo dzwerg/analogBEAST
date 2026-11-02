@@ -1075,25 +1075,13 @@ static uint32_t pat_count(void) { return NPATTERNS + up_pat_count(); }
 
 static void pat_label(uint32_t n, char *tag, char *name)   /* tag: 4 bytes ("01", "U07"), name: 13 */
 {
-    if (n < NPATTERNS) {
-        tag[0] = (char)('0' + (n + 1u) / 10u);
-        tag[1] = (char)('0' + (n + 1u) % 10u);
-        tag[2] = 0;
-        str_cpy(name, PATTERNS[n].name, 13);
-    } else {
-        uint32_t k = up_pat_nth(n - NPATTERNS);
-        up_slot_label(tag, k);
-        up_name(k, name);
-    }
+    {uint32_t k=up_pat_nth(n);up_slot_label(tag,k);up_name(k,name);}
 }
 
 static void pat_load(track_t *t, uint32_t n)
 {
     load_begin(t, UNDO_PAT);
-    if (n < NPATTERNS)
-        load_pat16(t, PATTERNS[n].note, PATTERNS[n].flags);
-    else
-        up_pat_load(t, up_pat_nth(n - NPATTERNS));
+    up_pat_load(t, up_pat_nth(n));
     pat_sig[trk_index(t)] = steps_sig(t);
     pat_last[trk_index(t)] = (uint8_t)(n + 1u);
     pat_from[trk_index(t)] = 0;                     /* (a phrase: no PROJECT slot) */
@@ -1325,7 +1313,7 @@ static void track_defaults(track_t *t)
 static void select_engine(uint32_t e)
 {
     set_engine(e);
-    ui_say("ENGINE ", ENGINES[TSEL->eng_req]->name);
+    ui_say("SYNTH MODE ", ENGINES[TSEL->eng_req]->name);
     ui.force = 1;
 }
 

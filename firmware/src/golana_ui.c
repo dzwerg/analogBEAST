@@ -80,9 +80,20 @@ enum { GV_NONE = 0xFF, GV_RES = 200, GV_BPM, GV_TUNE, GV_CLOCK, GV_STEP, GV_STEP
 _Static_assert(GV_AB_ALBUM_KIND < GV_NONE, "V5 UI IDs must not collide with NONE");
 _Static_assert(P_COUNT <= GV_AB_PLAY_ALBUM_SONG && GV_AB_PLAY_ALBUM_SONG < GV_RES,
                "ALBUM NEXT SONG virtual ID must not overlap real parameters or V5 IDs");
+enum { GV_AB17_PAT=180, GV_AB17_STEP, GV_AB17_LEN, GV_AB17_DEL,
+       GV_MD_NOTE, GV_MD_TYPE, GV_MD_FLAGS, GV_MD_VELO, GV_MD_GATE,
+       GV_MD_SWING, GV_MD_RES };
+enum { GV_AB_USBHOST = 191, GV_AB_USB_GAIN = 192, GV_AB_SYNTH_MODE = 193 };
+_Static_assert(GV_AB_USBHOST < GV_AB_USB_GAIN && GV_AB_USB_GAIN < GV_AB_PLAY_ALBUM_SONG,
+               "USB6 GLO virtual IDs must not overlap real parameters or album IDs");
+_Static_assert(GV_MD_RES < GV_AB_USBHOST && GV_AB_USBHOST < GV_AB_PLAY_ALBUM_SONG,
+               "USB host UI ID overlaps REC or ALBUM");
+_Static_assert(GV_MD_RES < GV_AB_PLAY_ALBUM_SONG && P_COUNT < GV_AB17_PAT,
+               "new UI IDs must not overlap track parameters or V5");
 typedef struct { uint8_t id; const char *label; const char *const *names; uint8_t nn; } gu_par_t;   /* nn: names' count */
 #define GN(a) a, (uint8_t)NELEM(a)                    /* (the lists have no 0 at their end: GOL_TP's GPE counts them) */
 typedef struct { uint8_t btn; const char *tab, *tshort; gu_par_t k[4]; } gu_page_t;
+static const char *const N_AB_SYNTH_MODE[] = {"KORG", "BRUTE", "ANALOG", "LOFI", "B1"};
 static const char *const N_GVOICE[] = {"POLY", "MONO", "LEGATO", "UNISON"};
 static const char *const N_BSOCT[] = {"-1 OCT", "-2 OCT", "+1 OCT", "+2 OCT"};
 static const char *const N_BSWAVE[] = {"SQUARE", "SAW", "TRI"};
@@ -90,13 +101,16 @@ static const char *const N_GRES[] = {"1/32", "1/24", "1/16", "1/12", "1/8", "1/4
 static const uint8_t GU_RES_DIV[6] = {3, 5, 2, 4, 1, 0};    /* N_GRES -> P_ARATE (params.c N_DIV) */
 static const char *const N_GCLOCK[] = {"INT", "USB", "TRS"};
 static const char *const N_GMIDI[] = {"ALL", "CH 1"};
+/* USB4_UI: four profiles, compact string values for 240px LCD. */
+static const char *const N_AB_USBHOST[] = {"AUDIO + MIDI", "MIDI DEVICE", "AUDIO DEVICE", "MIDI HOST"};
 static const char *const N_GSTYPE[] = {"REST", "NOTE", "TIE"};
 static const char *const N_GSFLAG[] = {"OFF", "ACCENT", "SLIDE", "BOTH"};
 static const char *const N_GSONOFF[] = {"OFF", "ON"};
 static const char *const N_GSONGEND[] = {"ONCE", "REPEAT"};
 static const char *const N_DZ_PLAYMODE[] = {"ONCE", "LOOP"};
 static const char *const N_AB5_MODE[] = {"PATTERN", "SONG", "ALBUM"};
-static const char *const N_AB_ALBUM_KIND[] = {"SONG", "END"};
+#define AB_MD_MODE_MBOX 3u
+static const char *const N_AB_ALBUM_KIND[] = {"SONG", "PRESET", "END"};
 /* the pages, grouped by the button that opens them (its pages side by side: the tabs). tab: the page's name on its
  * tab when it is open (after the button's name), tshort: on its tab while another page of the button is open */
 static const gu_page_t GU_PAGES[] = {
@@ -110,7 +124,7 @@ static const gu_page_t GU_PAGES[] = {
      {{GL_FTYPE, "TYPE", 0}, {GL_CUTOFF, "CUTOFF", 0}, {GL_RESO, "RESO", 0}, {GL_FEGINT, "EG INT", 0}}},
     {B_SCL, "KEY TRACK", "KEY TRK", {{GL_KTRK, "KEY TRACK", 0}, {GV_NONE, 0, 0}, {GV_NONE, 0, 0}, {GV_NONE, 0, 0}}},
     {B_SCL, "BRUTE FACTOR", "BRUTE",
-     {{P_GLBRUTE, "FACTOR", 0}, {GL_CUTOFF, "CUTOFF", 0}, {GL_RESO, "RESO", 0}, {P_GLSYNTH, "SYNTH MODE", 0}}},
+     {{P_GLBRUTE, "FACTOR", 0}, {GL_CUTOFF, "CUTOFF", 0}, {GL_RESO, "RESO", 0}, {GV_AB_SYNTH_MODE, "SYNTH MODE", GN(N_AB_SYNTH_MODE)}}},
     {B_ENV, "FILTER EG", "FILTER EG",
      {{GL_FA, "ATTACK", 0}, {GL_FD, "DECAY", 0}, {GL_FS, "SUSTAIN", 0}, {GL_FR, "RELEASE", 0}}},
     {B_ENV, "AMP EG", "AMP EG", {{P_ATK, "ATTACK", 0}, {P_DEC, "DECAY", 0}, {P_SUS, "SUSTAIN", 0}, {P_REL, "RELEASE", 0}}},
@@ -125,33 +139,40 @@ static const gu_page_t GU_PAGES[] = {
 #undef GU_PATCH
     {B_GLO, "AMP", "AMP", {{P_LEVEL, "LEVEL", 0}, {P_PAN, "PANPOT", 0}, {GL_DIST, "DIST", 0}, {P_SPRD, "SPREAD", 0}}},
     {B_GLO, "VOICE", "VOICE",
-     {{P_VOICE, "ASSIGN", GN(N_GVOICE)}, {P_DETUNE, "DETUNE", 0}, {P_GLIDE, "PORTA", 0}, {P_GLSYNTH, "SYNTH MODE", 0}}},
+     {{P_VOICE, "ASSIGN", GN(N_GVOICE)}, {P_DETUNE, "DETUNE", 0}, {P_GLIDE, "PORTA", 0}, {GV_AB_SYNTH_MODE, "SYNTH MODE", GN(N_AB_SYNTH_MODE)}}},
     {B_GLO, "GLOBAL", "GLOB",
      {{GV_BPM, "TEMPO", 0}, {GV_TUNE, "TUNE", 0}, {GV_CLOCK, "CLOCK", GN(N_GCLOCK)}, {GV_MIDI, "MIDI IN", GN(N_GMIDI)}}},
     {B_GLO, "SETUP", "SETUP", {{GL_ROUTE, "FX ORDER", 0}, {GV_PAL, "PALETTE", 0}, {GV_VIEW, "HOME", 0}, {GL_EGRESET, "EG RESET", 0}}},
+    {B_GLO, "USB MODE", "USB",
+     {{GV_AB_USBHOST, "USB MODE", GN(N_AB_USBHOST)}, {GV_AB_USB_GAIN, "USB LEVEL", 0},
+       {GV_NONE, 0, 0}, {GV_NONE, 0, 0}}},
     /* analogBEAST: PLAY first, followed by the two editors, then the three ARP pages. */
     {B_SEQ, "PLAY", "PLAY",
-     {{GV_V5_SELECT, "BANK", 0}, {GV_V5_PATTERN, "PATTERN", 0},
-      {GV_V5_MODE, "SONG MODE", GN(N_AB5_MODE)},
+     {{GV_AB17_PAT, "PATTERN", 0}, {GV_AB17_LEN, "STEPS", 0},
+      {GV_V5_MODE, "MODE", GN(N_AB5_MODE)},
       {GV_AB_PLAY_REPEAT, "PLAY MODE", GN(N_DZ_PLAYMODE)}}},
     {B_SEQ, "SONG EDIT", "SONG ED",
      {{GV_V5_SONG, "SONG", 0}, {GV_V5_ROW, "SONG STEP", 0},
-      {GV_V5_KIND, "BANK / CMD", 0}, {GV_V5_VALUE, "VALUE", 0}}},
+      {GV_V5_KIND, "TYPE", 0}, {GV_V5_VALUE, "PAT / VALUE", 0}}},
     {B_SEQ, "ALBUM EDIT", "ALBUM",
      {{GV_V5_ALBUM, "ALBUM", 0}, {GV_V5_SLOT, "ALBUM STEP", 0},
-      {GV_AB_ALBUM_KIND, "SONG / END", GN(N_AB_ALBUM_KIND)},
-      {GV_V5_ALBUM_SONG, "SONG", 0}}},
+      {GV_AB_ALBUM_KIND, "TYPE", GN(N_AB_ALBUM_KIND)},
+      {GV_V5_ALBUM_SONG, "SONG / VALUE", 0}}},
     {B_SEQ, "ARP", "ARP", {{GL_ARPON, "ARP", 0}, {GL_ARPTYPE, "TYPE", 0}, {P_AOCT, "RANGE", 0}, {GV_RES, "RES", GN(N_GRES)}}},
     {B_SEQ, "TIMING", "TIMING",
      {{P_AGATE, "GATE", 0}, {P_ASWING, "SWING", 0}, {P_AHOLD, "LATCH", GN(N_GONOFF)}, {GL_ARPKSYNC, "KEY SYNC", 0}}},
     {B_SEQ, "STEPS", "STEPS",
      {{GL_ARPLAST, "LAST STEP", 0}, {GV_STEP, "STEP", 0}, {GV_STEPON, "ON / OFF", GN(N_GONOFF)}, {GV_NONE, 0, 0}}},
+    {B_REC, "MUSIC PAT", "MUSIC", 
+     {{GV_AB17_PAT, "PATTERN", 0}, {GV_AB17_STEP, "STEP", 0},
+      {GV_AB17_LEN, "LENGTH", 0}, {GV_AB17_DEL, "DELETE", 0}}},
     {B_REC, "SET-STEP", "STEPS",
      {{GV_SSTEP, "STEP", 0}, {GV_SNOTE, "NOTE", 0}, {GV_STYPE, "TYPE", GN(N_GSTYPE)}, {GV_SFLAG, "ACC / SLIDE", GN(N_GSFLAG)}}},
     {B_REC, "SET-TIME", "TIME",
      {{GV_SSTEP, "STEP", 0}, {GV_SVELO, "VELO", 0}, {GV_SGATE, "GATE", 0}, {GV_SSWING, "SWING", 0}}},
     {B_REC, "SET-PATT", "PATT",
-     {{GV_DZ_BANK, "BANK", 0}, {GV_DZ_PATTERN, "PATTERN", 0}, {GV_SLEN, "LENGTH", 0}, {GV_PAT_RES, "RES", 0}}},
+     {{GV_AB17_PAT, "PATTERN", 0}, {GV_AB17_LEN, "LENGTH", 0},
+      {GV_MD_RES, "RES", 0}, {GV_NONE, 0, 0}}},
     {B_FX, "MOD FX", "MOD FX", {{GL_MFX, "TYPE", 0}, {P_IA, "SPEED", 0}, {P_IB, "DEPTH", 0}, {P_IMIX, "MIX", 0}}},
     {B_FX, "DELAY", "DELAY",
      {{GL_DTYPE, "TYPE", 0}, {GL_DTIME, "TIME", 0}, {GL_DFDBK, "FEEDBACK", 0}, {P_DLY, "LEVEL", 0}}},
@@ -180,14 +201,14 @@ static struct {
     uint8_t shown_save, shown_uboot;
     uint8_t dz_seq_mode;    /* 0 original, 1 BANK/PATTERN, 2 SONG */
     uint8_t dz_edit_active, dz_edit_index, dz_saved_dirty;
-    uint8_t v5_rec_active;  /* reuse existing REC pages for E-H, never add SEQ pages */
+    uint8_t v5_rec_active;  /* legacy preview only; MUSIC DISK uses all REC pages */
 } gu;
 
 /* Orange PLAY is independent of the SEQ/ARP page colour; palette-aware. */
 static uint16_t gu_page_accent(void)
 {
     if (GU_PAGES[gu.page].btn == B_SEQ) {
-        if (GU_PAGES[gu.page].k[0].id == GV_V5_SELECT)
+        if (GU_PAGES[gu.page].k[0].id == GV_AB17_PAT)
             return GU_P->light ? RGB(206,103,0) : RGB(255,132,24); /* distinct orange */
         if (GU_PAGES[gu.page].k[0].id == GL_ARPON ||
             GU_PAGES[gu.page].k[0].id == P_AGATE ||
@@ -201,8 +222,56 @@ static uint16_t gu_page_accent(void)
 /* DZ Stage 2: SEQ ALGO mode switch */
 /* v5 runtime: opt-in PLAY with RAM-only UI; no new flash writes. */
 static dz_seq_model_t dz_model __attribute__((section(".pool")));
-/* v5 RAM mirror in regular .bss; old flash PDZ6 remains FOREIGN. */
-static ab5_extra_t ab5_model; /* large v5 model in regular .bss; preserve POOL safety reserve */
+/* v5 RAM mirror in regular .bss; old flash PDZ6 remains FOREIGN.
+ * MUSIC DISK and legacy V5 are mutually exclusive on a device. Reuse the
+ * otherwise-idle V5 RAM block for direct-ID SONG/ALBUM state. */
+#define AB_MD_SONGS 32u
+#define AB_MD_ROWS 64u
+#define AB_MD_ALBUMS 4u
+#define AB_MD_REF_M 0x8000u
+#define AB_MD_REF_PRESET AB13_ALBUM_PRESET_TAG
+#define AB_MD_REF_ID 0x7FFFu
+#define AB_MD_REF_UI_MAX (AB_MD_SONGS+128u)
+#define AB_MD_KIND_PATTERN 0u
+#define AB_MD_KIND_TEMPO 1u
+#define AB_MD_KIND_PRESET 2u
+#define AB_MD_KIND_REST 3u
+#define AB_MD_KIND_ARP 4u
+#define AB_MD_KIND_END 5u
+#define AB_MD_KIND_BEGIN 6u
+typedef struct {
+    uint16_t pattern_id, steps, song_id, album_id, tempo;
+    int8_t transpose;
+    uint8_t rest, tempo_changed, preset, preset_changed, arp, arp_changed, transpose_changed;
+    uint8_t song_buf, row, album_slot, switch_song, switch_album, valid;
+} ab_md_event_t;
+typedef struct {
+    ab13_song song, next_song;
+    ab13_album album, queued_album;
+    ab13_pattern next_pattern, saved_pattern;
+    ab_md_event_t current, next;
+    uint16_t song_id, album_id, saved_pattern_id, play_album_id;
+    uint16_t queued_pattern_id, request_song_id, request_album_id;
+    uint8_t mode;
+    uint8_t song_loaded, song_dirty, song_row;
+    uint8_t album_loaded, album_dirty, album_slot;
+    uint8_t play_active, play_mode, play_arp; int8_t play_transpose;
+    uint8_t saved_pattern_valid, saved_pattern_dirty, prefetch_needed;
+    uint8_t queued_pattern_valid, request_song_valid, request_song_buf, request_album_valid;
+} ab_md_model_t;
+typedef union { ab5_extra_t legacy; ab_md_model_t md; } ab_model_store_t;
+static ab_model_store_t ab_model_store;
+#define ab5_model (ab_model_store.legacy)
+#define ab_md (ab_model_store.md)
+/* Foreground-only mixed S/M album conductor; no MD16 reads from audio interrupt. */
+static uint8_t ab_md_playlist_active,ab_md_playlist_slot,ab_md_playlist_started;
+static uint8_t ab_md_playlist_preset_active; /* ALBUM PRESET takes priority over SONG PRESET */
+static uint8_t ab_md_m_loop;
+static uint16_t ab_md_play_song_ref=1u; /* unified SONG picker: S1..S32 then M1..M128 */
+static void gu_say(const char *a, const char *b);
+static int ab_md_playlist_start(void);
+static void ab_md_playlist_tick(void);
+_Static_assert(sizeof(ab_md_model_t)<=sizeof(ab5_extra_t),"MUSIC DISK state must fit legacy V5 RAM");
 static ab5_nor_state_t ab5_state;
 static uint8_t ab5_boot_status;
 /* Stage 4b: v5 playback is explicitly armed by visiting a v5 menu.
@@ -221,11 +290,229 @@ static step_t dz_play_saved_steps[NSTEP] __attribute__((section(".pool")));
 static int16_t dz_play_saved_len, dz_play_saved_gate, dz_play_saved_resolution, dz_play_saved_swing;
 static int16_t dz_play_saved_arp_on, dz_play_saved_arp_mode;
 /* Preview preserves the currently loaded synth-program steps on REC entry. */
-static step_t dz_saved_steps[NSTEP] __attribute__((section(".pool")));
+static step_t dz_saved_steps[NSTEP];
 static int16_t dz_saved_length, dz_saved_resolution;
 static uint8_t dz_saved_step_cursor;
 
 static track_t *gu_t(void) { return &trk[0]; }
+/* All disk selections and edits happen on the foreground UI thread. */
+static uint8_t ab_fix_rec_page(void) { return ab18_disk_owned && GU_PAGES[gu.page].btn==B_REC; }
+static uint8_t ab_fix_step(void) {
+    uint32_t n=ab15_cache.pattern.length;
+    uint32_t step=ab17_ui_delete.step;
+    return (uint8_t)(step>=1u && step<=n?step-1u:0u);
+}
+static int ab_fix_rec_pattern(uint16_t id) {
+    static ab13_pattern fresh;
+    int rc;
+    if(!id || id>AB16_PATTERN_ID_MAX || !ab18_disk_owned || song.playing || transport_busy() ||
+       gu.save || ab15_cache.active || ab15_cache.dirty)return AB16_ESTATE;
+    rc=ab18_load_disk(id);
+    if(rc==AB16_ENOTFOUND){
+        ab13_pattern_init(&fresh,16u,2u);
+        rc=ab15_select(&ab15_cache,id,&fresh);
+    }
+    if(!rc)ab17_init(&ab17_ui_delete,id);
+    return rc;
+}
+
+/* -------------------------- MUSIC DISK SONG/ALBUM -------------------------
+ * Direct IDs only: no bank is stored or shown. The on-disk codec is AB13 and
+ * SONG EDIT intentionally exposes 64 rows even though the codec can hold more.
+ */
+static const uint8_t AB_MD_KIND_TO_OP[7]={AB13_OP_PATTERN,AB13_OP_TEMPO,AB13_OP_PRESET,
+                                         AB13_OP_REST,AB13_OP_ARP,AB13_OP_END,AB13_OP_BEGIN};
+static void ab_md_song_blank(ab13_song *s){
+    uint32_t i;memset(s,0,sizeof *s);s->count=AB_MD_ROWS;
+    for(i=0u;i<AB_MD_ROWS;i++)s->row[i].op=AB13_OP_END;
+}
+/* A new SONG EDIT slot must have a real playable first row. Before this fix
+ * it started on END: K4 (PATTERN) was hidden and PLAY saw SONG EMPTY.
+ * Never invent a pattern reference: use the indexed, verified MUSIC DISK. */
+static int ab_md_song_seed_first(ab13_song *s){
+    uint32_t first;int rc;
+    rc=ab18_fast_first(AB16_PAT,&first);if(rc)return rc;
+    rc=ab18_fast_pattern((uint16_t)first,&ab_md.next_pattern,0);if(rc)return rc;
+    s->row[0].op=AB13_OP_PATTERN;
+    s->row[0].pattern_id=(uint16_t)first;
+    s->row[0].steps=ab_md.next_pattern.length;
+    return 0;
+}
+static void ab_md_album_blank(ab13_album *a){memset(a,0,sizeof *a);}
+static void ab_md_init(void){
+    memset(&ab_md,0,sizeof ab_md);ab_md.song_id=1u;ab_md.album_id=1u;ab_md.mode=AB5_MODE_PATTERN;
+    ab_md_play_song_ref=1u;
+    ab_md_song_blank(&ab_md.song);ab_md_album_blank(&ab_md.album);
+}
+static int ab_md_kind_from_op(uint8_t op){
+    uint32_t i;for(i=0u;i<7u;i++)if(AB_MD_KIND_TO_OP[i]==op)return (int)i;
+    return AB_MD_KIND_END;
+}
+static int ab_md_song_select(uint16_t id,int create){
+    int rc;uint8_t created=0u;
+    if(!id||id>AB_MD_SONGS)return AB16_EINVAL;
+    if(ab_md.song_dirty && ab_md.song_loaded && id!=ab_md.song_id)return AB16_ESTATE;
+    if(ab_md.song_loaded && id==ab_md.song_id)return 0;
+    rc=ab18_load_song_obj(id,&ab_md.song);
+    if(rc==AB16_ENOTFOUND && create){
+        ab_md_song_blank(&ab_md.song);
+        rc=ab_md_song_seed_first(&ab_md.song);
+        if(!rc)created=1u;
+    }
+    ab_md.song_id=id;ab_md.song_row=0u;ab_md.song_dirty=created;
+    ab_md.song_loaded=(uint8_t)(rc==0);
+    return rc;
+}
+static int ab_md_album_select(uint16_t id,int create){
+    int rc;
+    if(!id||id>AB_MD_ALBUMS)return AB16_EINVAL;
+    if(ab_md.album_dirty && ab_md.album_loaded && id!=ab_md.album_id)return AB16_ESTATE;
+    if(ab_md.album_loaded && id==ab_md.album_id)return 0;
+    rc=ab18_load_album_obj(id,&ab_md.album);
+    if(rc==AB16_ENOTFOUND && create){ab_md_album_blank(&ab_md.album);rc=0;}
+    ab_md.album_id=id;ab_md.album_slot=0u;ab_md.album_dirty=0u;
+    ab_md.album_loaded=(uint8_t)(rc==0);
+    return rc;
+}
+static ab13_row *ab_md_row(void){return &ab_md.song.row[ab_md.song_row<AB_MD_ROWS?ab_md.song_row:0u];}
+/* A missing/deleted or old empty factory placeholder must NEVER look like
+ * an existing 16-step pattern in SONG EDIT. */
+static int ab_md_pattern_length(uint16_t id){
+    int rc=ab18_fast_pattern(id,&ab_md.next_pattern,0);
+    return rc?0:(int)ab_md.next_pattern.length;
+}
+static int ab_md_set_kind(uint8_t kind){
+    ab13_row replacement={0};uint8_t op=kind<7u?AB_MD_KIND_TO_OP[kind]:AB13_OP_END;
+    replacement.op=op;
+    if(op==AB13_OP_PATTERN){
+        uint32_t first;int len;
+        uint16_t id=ab15_cache.loaded?ab15_cache.pattern_id:1u;
+        if(id<1u||id>AB16_PATTERN_ID_MAX)id=1u;
+        len=ab_md_pattern_length(id);
+        if(!len){
+            if(ab18_fast_first(AB16_PAT,&first))return AB16_ENOTFOUND;
+            id=(uint16_t)first;len=ab_md_pattern_length(id);
+            if(!len)return AB16_ENOTFOUND;
+        }
+        replacement.pattern_id=id;replacement.steps=(uint16_t)len;
+    }else if(op==AB13_OP_TEMPO)replacement.value=(int16_t)clamp(song.g[G_BPM],40,240);
+    else if(op==AB13_OP_PRESET)replacement.value=(int16_t)clamp((int32_t)gu.prog+1,1,32);
+    else if(op==AB13_OP_REST)replacement.steps=16u;
+    else if(op==AB13_OP_ARP)replacement.value=gu_t()->p[GL_ARPON]?1:0;
+    *ab_md_row()=replacement;ab_md.song_dirty=1u;
+    return 0;
+}
+/* Old A13! albums remain S1..S32. High bit marks M1-1..M1-128. */
+static uint16_t ab_md_ref_from_ui(uint16_t n){
+    return n<=AB_MD_SONGS?n:(uint16_t)(AB_MD_REF_M|(n-AB_MD_SONGS));
+}
+static uint16_t ab_md_ref_to_ui(uint16_t ref){
+    return (ref&AB_MD_REF_M)?(uint16_t)(AB_MD_SONGS+(ref&AB_MD_REF_ID)):ref;
+}
+static int ab_md_ref_present(uint16_t ref){
+    uint32_t v,id=ref&AB_MD_REF_ID;int rc=ab18_index_ensure();
+    if(rc)return 0;
+    if(ref&AB_MD_REF_M)return id>=1u&&id<=128u&&ab18_ix_get(AB16_MBOX,id)!=0u;
+    if(!id||id>AB_MD_SONGS)return 0;
+    v=ab18_ix_get(AB16_SONG,id);
+    return v && !(v&0x80000000u);
+}
+static int ab_md_ref_browse(uint16_t current,int dir,uint16_t *out){
+    uint32_t n=ab_md_ref_to_ui(current),i;
+    if(!out||(dir!=1&&dir!=-1))return AB16_EINVAL;
+    if(n<1u||n>AB_MD_REF_UI_MAX)n=dir>0?AB_MD_REF_UI_MAX:1u;
+    for(i=0u;i<AB_MD_REF_UI_MAX;i++){
+        n=dir>0?(n==AB_MD_REF_UI_MAX?1u:n+1u):(n==1u?AB_MD_REF_UI_MAX:n-1u);
+        if(ab_md_ref_present(ab_md_ref_from_ui((uint16_t)n))){
+            *out=ab_md_ref_from_ui((uint16_t)n);return 0;
+        }
+    }
+    return AB16_ENOTFOUND;
+}
+static int ab_md_first_ref(uint16_t *ref){
+    return ab_md_ref_browse(ab_md_ref_from_ui(AB_MD_REF_UI_MAX),1,ref);
+}
+/* ALBUM A13!: 0x0001..0x0020 = S, 0x8001..0x8080 = M,
+ * 0x4001..0x4020 = PRESET. END is expressed by count, preserving old bytes. */
+static int ab_md_album_kind(void){
+    if(!ab_md.album_loaded || ab_md.album_slot>=ab_md.album.count)return 2; /* END */
+    return AB13_ALBUM_IS_PRESET(ab_md.album.song_id[ab_md.album_slot])?1:0;
+}
+static int ab_md_album_set_kind(int kind){
+    uint32_t i;uint16_t ref;
+    if(!ab_md.album_loaded||ab_md.album_slot>=AB13_ALBUM_SLOTS||kind<0||kind>2)return -1;
+    if(kind==2){
+        if(ab_md.album_slot<ab_md.album.count){
+            for(i=ab_md.album_slot;i<AB13_ALBUM_SLOTS;i++)ab_md.album.song_id[i]=0u;
+            ab_md.album.count=ab_md.album_slot;ab_md.album_dirty=1u;
+        }
+        return 0;
+    }
+    if(ab_md.album_slot>ab_md.album.count)return -1;
+    if(kind==1){ref=AB13_ALBUM_PRESET_REF((uint16_t)gu.prog+1u);}
+    else if(ab_md_first_ref(&ref))return -1;
+    if(ab_md.album_slot==ab_md.album.count){
+        ab_md.album.song_id[ab_md.album_slot]=ref;
+        ab_md.album.count++;ab_md.album_dirty=1u;
+    }else if((ab_md_album_kind()==1)!=(kind==1)){
+        ab_md.album.song_id[ab_md.album_slot]=ref;ab_md.album_dirty=1u;
+    }
+    return 0;
+}
+/* Refuse a SONG SAVED that would fail later in the player. This reads only
+ * the compact RAM index + referenced pattern CRCs, never scans the volume. */
+static int ab_md_validate_song(const ab13_song *sg){
+    uint32_t i;uint8_t has_pattern=0u;
+    if(!sg||ab13_song_check(sg))return AB16_EINVAL;
+    for(i=0u;i<sg->count && i<AB_MD_ROWS;i++){
+        const ab13_row *r=&sg->row[i];
+        if(r->op==AB13_OP_END)break;
+        if(r->op==AB13_OP_PATTERN){
+            int len=ab_md_pattern_length(r->pattern_id);
+            if(!len)return AB16_ENOTFOUND;
+            if(r->steps>len)return AB16_EINVAL;
+            has_pattern=1u;
+        }
+    }
+    return has_pattern?0:AB16_ENOTFOUND;
+}
+static int ab_md_save_song(void){
+    int rc;if(!ab_md.song_loaded)return AB16_ENOTFOUND;
+    rc=ab_md_validate_song(&ab_md.song);if(rc)return rc;
+    rc=ab18_save_song_obj(ab_md.song_id,&ab_md.song);
+    if(!rc){ab_md.song_dirty=0u;ab_md.mode=AB5_MODE_SONG;}
+    return rc;
+}
+static int ab_md_save_album(void){
+    uint32_t i;int rc;
+    if(!ab_md.album_loaded||!ab_md.album.count)return AB16_ENOTFOUND;
+    for(i=0u;i<ab_md.album.count;i++){
+        uint16_t ref=ab_md.album.song_id[i];
+        if(AB13_ALBUM_IS_PRESET(ref)){
+            if(!(ref&AB13_ALBUM_PRESET_VALUE_MASK)||(ref&AB13_ALBUM_PRESET_VALUE_MASK)>32u)return AB16_EINVAL;
+            continue;
+        }
+        if(ref&AB_MD_REF_M){
+            uint16_t id=ref&AB_MD_REF_ID;
+            if(!id||id>128u)return AB16_EINVAL;
+            rc=ab_m_exists(id);
+            if(rc)return rc;
+        }else{
+            if(!ref||ref>AB_MD_SONGS)return AB16_EINVAL;
+            rc=ab18_load_song_obj(ref,&ab_md.next_song);
+            if(rc)return rc;
+            rc=ab_md_validate_song(&ab_md.next_song);
+            if(rc)return rc;
+        }
+    }
+    /* An album consisting only of PRESET commands cannot produce music. */
+    {uint8_t song_found=0u;
+     for(i=0u;i<ab_md.album.count;i++)if(!AB13_ALBUM_IS_PRESET(ab_md.album.song_id[i]))song_found=1u;
+     if(!song_found)return AB16_ENOTFOUND;}
+    rc=ab18_save_album_obj(ab_md.album_id,&ab_md.album);
+    if(!rc){ab_md.album_dirty=0u;ab_md.mode=AB5_MODE_ALBUM;}
+    return rc;
+}
 
 /* DSP-supported modes are currently 0=MIKROKORG, 1=BRUTE (dev5).
  * Future B1/BEAST pages enter this predicate only when their DSP is added. */
@@ -233,11 +520,46 @@ static int gu_page_visible(uint32_t page)
 {
     uint32_t mode = (uint32_t)gu_t()->p[P_GLSYNTH];
     if (page >= GU_NPAGE) return 0;
+    if (!ab18_disk_owned && GU_PAGES[page].k[0].id == GV_AB17_PAT) return 0;
+    if (ab18_disk_owned && GU_PAGES[page].btn == B_REC) return 1;
     if (GU_PAGES[page].k[0].id == P_GLBRUTE && mode != 1u)
         return 0;                 /* BRUTE FACTOR has no effect in MIKROKORG */
     return 1;
 }
 
+/* --- Stage18: PRESETS encoder: P01-P32 followed by A01-A12, L01-L05.
+ * Factory entries reference the immutable Felucca tables in firmware ROM.
+ * gu.prog remains the 0..31 USER slot for song/album and WRITE compatibility. */
+#define GU_FACTORY_ANALOG 12u
+#define GU_FACTORY_LOFI 5u
+#define GU_BROWSER_TOTAL (GL_NPROG + GU_FACTORY_ANALOG + GU_FACTORY_LOFI)
+_Static_assert(GL_NPROG == 32u, "Stage18 must not change the 32 user slots");
+_Static_assert(NELEM(ANALOG_PRESETS) == GU_FACTORY_ANALOG, "ANALOG factory count changed");
+_Static_assert(NELEM(LOFI_PRESETS) == GU_FACTORY_LOFI, "LOFI factory count changed");
+static uint8_t gu_browser; /* transient selection only; never written to NOR */
+static void gu_load_factory(uint32_t ix)
+{
+    track_t *t = gu_t();
+    uint32_t e, k;
+    const engine_t *en;
+    /* Switching DSP/engines while the sequencer is running is not safe to validate here.
+       User presets retain the existing live-program-change path. */
+    if (transport_busy()) { gu_say("STOP FIRST", 0); return; }
+    if (ix >= GU_FACTORY_ANALOG + GU_FACTORY_LOFI) return;
+    e = ix < GU_FACTORY_ANALOG ? 0u : 3u; /* ENGI_ANALOG=0, ENGI_LOFI=3 */
+    k = ix < GU_FACTORY_ANALOG ? ix : ix - GU_FACTORY_ANALOG;
+    en = ENGINES[e];
+    if (!en || k >= en->npresets) { gu_say("PRESET ERROR", 0); return; }
+    /* Same IRQ-safe engine/preset loader already used by Felucca's own PRESETS page. */
+    if (t->eng_req != e) set_engine_of(t, e);
+    apply_preset_to(t, k);
+    gu_browser = (uint8_t)(GL_NPROG + ix);
+    str_cpy(gu.name, en->presets[k].name, sizeof gu.name);
+    gu.dirty = 0;
+    gu.sig_head = gu.sig_list = gu.sig_body = 0u;
+    gu.sig_card[0] = gu.sig_card[1] = gu.sig_card[2] = gu.sig_card[3] = 0u;
+    ui.force = 1u;
+}
 /* --------------------------------------------------------------- programs --- */
 static void gu_prog_values(uint32_t k, int16_t *v, char *name)
 {
@@ -282,22 +604,19 @@ static void gu_load_core(uint32_t k, uint32_t manual)
     } else {
         static const uint8_t NONE[16];
         const uint8_t *nt = NONE, *fl = NONE;
-        if (k == 1u) {
-            nt = PATTERNS[0].note;
-            fl = PATTERNS[0].flags;
-        }
         load_pat16(t, nt, fl);
     }
     t->p[P_SLEN] = (int16_t)clamp(v[P_SLEN], 1, NSTEP);
     gu.prog = (uint8_t)k;
+    gu_browser = (uint8_t)k;
     str_cpy(gu.name, nm, 13);
     gu.dirty = 0;
 }
 static void gu_dz_apply_preset(uint32_t preset); /* live-safe sound-only load */
 static void gu_load(uint32_t k)
 {
-    if (dz_play_has_backup)
-        { /* V1.1: change ONLY the sound, never the active sequence. */
+    if (dz_play_has_backup || ab_m_playing || ab_md_playlist_active)
+        { /* Live knob: change sound only; S/M playback must not reset. */
             fm1_irq_off();
             seq_release(gu_t());
             trk_all_off(gu_t());
@@ -332,6 +651,7 @@ static void gu_dz_apply_preset(uint32_t preset)
     t->p[P_SGATE] = gate;
     t->p[P_SQNT] = quant;
     gu.prog = (uint8_t)preset;
+    gu_browser = (uint8_t)preset;
     str_cpy(gu.name, name, sizeof gu.name);
     gu.dirty = 0;
     ui.force = 1u;
@@ -378,6 +698,15 @@ static uint32_t gu_dz_step_samples(uint32_t idx, uint32_t period)
 {
     const ab_step_t *step, *next;
     uint32_t n, nx;
+    if (ab15_cache.active) {
+        const ab13_step *a,*b;
+        uint32_t base=(uint32_t)ab15_cache.page*AB15_PAGE_STEPS;
+        n=ab15_cache.pattern.length;
+        if(!n || base+idx>=n)return period;
+        idx=base+idx;nx=(idx+1u)%n;
+        a=&ab15_cache.pattern.steps[idx];b=&ab15_cache.pattern.steps[nx];
+        return ab_swing_step_length(period,idx,a->swing,b->swing,nx);
+    }
     if (!dz_play_has_backup || !gu_play_running() || gu_play_rest())
         return period;
     n = gu_play_steps();
@@ -392,6 +721,8 @@ static uint32_t gu_dz_step_samples(uint32_t idx, uint32_t period)
 }
 static uint8_t gu_dz_arp_active(void)
 {
+    if(ab_md.play_active)return dz_play_has_backup && ab15_cache.active &&
+                                  ab_md.play_arp && !ab_md.current.rest;
     return dz_play_has_backup && gu_play_running() && gu_play_arp() && !gu_play_rest();
 }
 /* Runtime ARP ON/OFF overrides the loaded sound's ARP switch only during PLAY.
@@ -416,6 +747,7 @@ static void gu_dz_apply_arp_command(track_t *t)
  * Conversion is bounded to 64 mono steps; no flash operations occur here. */
 static void gu_dz_play_pattern(void)
 {
+    if (ab15_cache.active) { ab15_audio_page(gu_t()); return; }
     uint32_t i;
     const uint8_t bank = gu_play_bank(), pattern = gu_play_pattern();
     const uint8_t n = gu_play_steps();
@@ -426,10 +758,10 @@ static void gu_dz_play_pattern(void)
     ab5_song_octave = (ab5_play_active && ab5_play.mode!=AB5_MODE_PATTERN) ? ab5_play.octave : 0;
     if (ab5_play_active) {
         if (ab5_play.preset_changed) gu_dz_apply_preset(ab5_play.preset);
-        if (ab5_play.tempo_changed) song.g[G_BPM] = (int16_t)ab5_play.tempo;
+        if (ab5_play.tempo_changed && ab5_play.tempo>0) song.g[G_BPM] = (int16_t)ab5_play.tempo;
     } else {
         if (dz_play.preset_changed) gu_dz_apply_preset(dz_play.preset);
-        if (dz_play.tempo_changed) song.g[G_BPM] = (int16_t)dz_play.tempo;
+        if (dz_play.tempo_changed && dz_play.tempo>0) song.g[G_BPM] = (int16_t)dz_play.tempo;
     }
     gu_dz_apply_arp_command(t);
     if (!gu_play_running() || gu_play_rest()) { /* END / REST: silence, no stale notes */
@@ -470,10 +802,283 @@ static void gu_dz_play_pattern(void)
  * A NOTE followed by TIEs retains that NOTE's own gate value. */
 static uint32_t gu_dz_step_gate(uint32_t idx)
 {
+    if (ab15_cache.active) return ab15_audio_gate(idx);
     const ab_step_t *ps;
     if (!dz_play_has_backup || gu_play_rest()) return 64u;
     ps = gu_play_step(idx);
     return ps && ps->gate ? ps->gate : 64u;
+}
+
+/* MUSIC DISK SONG/ALBUM runtime. Flash is touched only by prepare/service on
+ * the foreground thread. gu_song_next() only swaps already-prefetched RAM. */
+static ab13_song *ab_md_songbuf(uint8_t which){return which?&ab_md.next_song:&ab_md.song;}
+static int ab_md_runtime_song(uint8_t which,uint16_t id){
+    if(!id||id>AB_MD_SONGS)return AB16_EINVAL;
+    return ab18_load_song_obj(id,ab_md_songbuf(which));
+}
+static int ab_md_queue_pattern(int32_t clicks){
+    uint32_t id,i,n;int dir,rc;
+    if(!ab15_cache.active||ab_md.play_active||ab_md.mode!=AB5_MODE_PATTERN||!clicks)return AB16_ESTATE;
+    id=ab_md.queued_pattern_valid?ab_md.queued_pattern_id:ab15_cache.pattern_id;
+    dir=clicks>0?1:-1;n=(uint32_t)(clicks>0?clicks:-(int64_t)clicks);if(n>8u)n=8u;
+    for(i=0u;i<n;i++){rc=ab18_fast_next(AB16_PAT,id,dir,&id);if(rc)return rc;}
+    rc=ab18_fast_pattern((uint16_t)id,&ab_md.next_pattern,0);if(rc)return rc;
+    ab_md.queued_pattern_id=(uint16_t)id;ab_md.queued_pattern_valid=1u;return 0;
+}
+static int ab_md_queue_song(uint16_t id){
+    uint8_t spare;int rc;
+    if(!ab_md.play_active||ab_md.play_mode!=AB5_MODE_SONG||!id||id>AB_MD_SONGS)return AB16_ESTATE;
+    if(id==ab_md.current.song_id){
+        ab_md.request_song_valid=0u;ab_md.next.valid=0u;ab_md.prefetch_needed=1u;return 0;
+    }
+    spare=(uint8_t)(ab_md.current.song_buf^1u);
+    rc=ab_md_runtime_song(spare,id);if(rc)return rc;
+    ab_md.request_song_id=id;ab_md.request_song_buf=spare;ab_md.request_song_valid=1u;
+    ab_md.next.valid=0u;ab_md.prefetch_needed=1u;return 0;
+}
+static int ab_md_queue_album(uint16_t id){
+    int rc;
+    if(!ab_md.play_active||ab_md.play_mode!=AB5_MODE_ALBUM||!id||id>AB_MD_ALBUMS)return AB16_ESTATE;
+    if(id==ab_md.play_album_id){
+        ab_md.request_album_valid=0u;ab_md.next.valid=0u;ab_md.prefetch_needed=1u;return 0;
+    }
+    rc=ab18_load_album_obj(id,&ab_md.queued_album);if(rc)return rc;
+    if(!ab_md.queued_album.count)return AB16_ENOTFOUND;
+    ab_md.request_album_id=id;ab_md.request_album_valid=1u;
+    ab_md.next.valid=0u;ab_md.prefetch_needed=1u;return 0;
+}
+static int ab_md_seek_event(uint8_t buf,uint16_t sid,uint8_t row,uint8_t album_slot,
+                            ab_md_event_t *ev,ab13_pattern *pat){
+    uint32_t scanned;
+    memset(ev,0,sizeof *ev);ev->album_id=ab_md.play_album_id;
+    for(scanned=0u;scanned<AB_MD_SONGS*AB_MD_ROWS+1u;scanned++){
+        ab13_song *sg=ab_md_songbuf(buf);ab13_row *r;
+        if(row>=AB_MD_ROWS || sg->row[row].op==AB13_OP_END){
+            if(ab_md.play_mode==AB5_MODE_SONG){
+                if(ab_md.request_song_valid && ab_md.request_song_id!=sid){
+                    sid=ab_md.request_song_id;buf^=1u;
+                    if(buf!=ab_md.request_song_buf)return AB16_ESTATE;
+                    row=0u;ev->switch_song=1u;continue;
+                }
+                if(!sg->loop || ab_md_playlist_active)return AB16_ENOTFOUND;
+                row=(uint8_t)ab13_song_loop_row(sg);continue;
+            }
+            if(ab_md.play_mode!=AB5_MODE_ALBUM || !ab_md.album.count)return AB16_ENOTFOUND;
+            if(ab_md.request_album_valid && ab_md.request_album_id!=ab_md.play_album_id){
+                if(!ab_md.queued_album.count)return AB16_ENOTFOUND;
+                album_slot=0u;sid=ab_md.queued_album.song_id[0];
+                if(!sid||sid>AB_MD_SONGS)return AB16_EINVAL;
+                buf^=1u;{int rc=ab_md_runtime_song(buf,sid);if(rc)return rc;}
+                row=0u;ev->switch_album=1u;ev->album_id=ab_md.request_album_id;continue;
+            }
+            album_slot++;
+            if(album_slot>=ab_md.album.count){
+                if(!ab_md.album.loop)return AB16_ENOTFOUND;
+                album_slot=0u;
+            }
+            sid=ab_md.album.song_id[album_slot];
+            if(!sid||sid>AB_MD_SONGS)return AB16_EINVAL;
+            buf^=1u;
+            {int rc=ab_md_runtime_song(buf,sid);if(rc)return rc;}
+            row=0u;continue;
+        }
+        r=&sg->row[row];
+        if(r->op==AB13_OP_TEMPO){
+            /* TEMPO 0 in a stored SONG is NO-OP, never a pause or a loop trap. */
+            if(r->value>0){ev->tempo=(uint16_t)r->value;ev->tempo_changed=1u;}
+            row++;continue;
+        }
+        if(r->op==AB13_OP_BEGIN){row++;continue;} /* inert on first pass; SONG LOOP targets it */
+        if(r->op==AB13_OP_PRESET){
+            if(!(ab_md_playlist_active && ab_md_playlist_preset_active)){
+                ev->preset=(uint8_t)r->value;ev->preset_changed=1u;
+            }
+            row++;continue;
+        }
+        if(r->op==AB13_OP_ARP){ev->arp=(uint8_t)!!r->value;ev->arp_changed=1u;row++;continue;}
+        if(r->op==AB13_OP_TRANSPOSE){ev->transpose=(int8_t)r->value;ev->transpose_changed=1u;row++;continue;}
+        if(r->op==AB13_OP_REST){
+            uint16_t n=r->steps;
+            if(n<AB13_MIN_STEPS||n>AB13_MAX_STEPS)return AB16_EINVAL;
+            ab13_pattern_init(pat,(uint8_t)n,2u);ev->rest=1u;ev->pattern_id=0u;ev->steps=n;
+        }else if(r->op==AB13_OP_PATTERN){
+            uint16_t n;int rc;
+            if(!r->pattern_id||r->pattern_id>AB16_PATTERN_ID_MAX)return AB16_EINVAL;
+            rc=ab18_fast_pattern(r->pattern_id,pat,0);if(rc)return rc;
+            n=r->steps;if(!n||n>pat->length)n=pat->length;
+            if(n<AB13_MIN_STEPS)return AB16_EINVAL;
+            pat->length=(uint8_t)n;ev->pattern_id=r->pattern_id;ev->steps=n;
+        }else return AB16_EINVAL;
+        ev->song_buf=buf;ev->song_id=sid;ev->row=row;ev->album_slot=album_slot;ev->valid=1u;
+        return 0;
+    }
+    return AB16_ESTATE;
+}
+static void ab_md_apply_event(const ab_md_event_t *ev){
+    track_t *t=gu_t();
+    if(!ev||!ev->valid)return;
+    if(ev->preset_changed && ev->preset>=1u && ev->preset<=32u &&
+       !(ab_md_playlist_active && ab_md_playlist_preset_active))
+        gu_dz_apply_preset((uint32_t)ev->preset-1u);
+    if(ev->tempo_changed && ev->tempo>0)song.g[G_BPM]=(int16_t)ev->tempo;
+    if(ev->transpose_changed)ab_md.play_transpose=ev->transpose;
+    ab5_song_transpose=ab_md.play_transpose;ab5_song_octave=0;
+    if(ev->arp_changed){
+        uint8_t on=ev->arp;int16_t mode=on?(int16_t)GL_AM[clamp(t->p[GL_ARPTYPE],0,5)]:0;
+        ab_md.play_arp=on;
+        if(t->p[P_AMODE]!=mode && t->arp_note)arp_off(t);
+        if(on && t->p[P_AMODE]==0){t->arp_pos=0xFFFFFFFu;t->arp_idx=0xFFFFFFFFu;t->arp_st=0u;}
+        t->p[GL_ARPON]=on;t->p[P_AMODE]=mode;
+        if(!on)dz_arp_source_on=0u;
+    }
+}
+static int ab_md_prefetch(void){
+    int rc;
+    if(!ab_md.play_active)return AB16_ESTATE;
+    ab_md.next.valid=0u;
+    rc=ab_md_seek_event(ab_md.current.song_buf,ab_md.current.song_id,
+                        (uint8_t)(ab_md.current.row+1u),ab_md.current.album_slot,
+                        &ab_md.next,&ab_md.next_pattern);
+    if(rc==AB16_ENOTFOUND){ab_md.prefetch_needed=0u;return 0;}
+    if(rc){ab_md.prefetch_needed=0u;return rc;}
+    ab_md.prefetch_needed=0u;return 0;
+}
+static void ab_md_service(void){
+    if(ab_md.play_active && ab_md.prefetch_needed && !ab_md.next.valid)
+        (void)ab_md_prefetch();
+    ab_md_playlist_tick(); /* never called in the audio interrupt */
+}
+static void ab_md_restore_saved_pattern(void){
+    if(ab_md.saved_pattern_valid){
+        ab15_cache.active=0u;ab15_cache.pattern=ab_md.saved_pattern;
+        ab15_cache.pattern_id=ab_md.saved_pattern_id;ab15_cache.loaded=1u;ab15_cache.armed=1u;
+        ab15_cache.dirty=ab_md.saved_pattern_dirty;ab15_cache.page=0u;ab15_cache.loop=ab5_pattern_loop;
+        ab17_init(&ab17_ui_delete,ab15_cache.pattern_id);
+    }else ab15_clear(&ab15_cache);
+}
+static int ab_md_prepare_start(void){
+    ab_md_event_t first;uint16_t sid;uint8_t buf=0u;int rc;
+    if(!ab18_disk_owned || ab_md.mode==AB5_MODE_PATTERN)return AB16_ESTATE;
+    /* A dirty, unrelated editor must not lock this play mode.  Do not
+     * discard any dirty state: it is kept until that editor is saved. */
+    if(ab15_cache.dirty)return AB16_ESTATE;
+    if(ab_md.mode==AB5_MODE_SONG && ab_md.song_dirty)return AB16_ESTATE;
+    if(ab_md.mode==AB5_MODE_ALBUM && (ab_md.album_dirty||ab_md.song_dirty))return AB16_ESTATE;
+    if(ab_md.mode==AB5_MODE_SONG){
+        rc=ab_md_song_select(ab_md.song_id?ab_md.song_id:1u,0);if(rc)return rc;
+        sid=ab_md.song_id;
+    }else{
+        rc=ab_md_album_select(ab_md.album_id?ab_md.album_id:1u,0);if(rc)return rc;
+        if(!ab_md.album.count)return AB16_ENOTFOUND;
+        sid=ab_md.album.song_id[0];if(!sid||sid>AB_MD_SONGS)return AB16_EINVAL;
+        rc=ab_md_runtime_song(0u,sid);if(rc)return rc;
+        /* Album playback owns buffer 0 now; reload SONG EDIT after STOP. */
+        ab_md.song_loaded=0u;
+    }
+    if(ab15_cache.loaded){
+        ab_md.saved_pattern=ab15_cache.pattern;ab_md.saved_pattern_id=ab15_cache.pattern_id;
+        ab_md.saved_pattern_dirty=ab15_cache.dirty;ab_md.saved_pattern_valid=1u;
+    }else ab_md.saved_pattern_valid=0u;
+    ab_md.play_mode=ab_md.mode;ab_md.play_active=1u;ab_md.play_arp=gu_t()->p[GL_ARPON]?1u:0u;
+    ab_md.play_album_id=ab_md.album_id;
+    ab_md.play_transpose=0;ab_md.current.valid=ab_md.next.valid=0u;ab_md.prefetch_needed=0u;
+    ab_md.queued_pattern_valid=ab_md.request_song_valid=ab_md.request_album_valid=0u;
+    rc=ab_md_seek_event(buf,sid,0u,0u,&first,&ab_md.next_pattern);
+    if(rc){ab_md.play_active=0u;return rc;}
+    ab15_cache.active=0u;
+    rc=ab15_select(&ab15_cache,first.pattern_id?first.pattern_id:1u,&ab_md.next_pattern);
+    if(rc){ab_md.play_active=0u;ab_md_restore_saved_pattern();return AB16_ESTATE;}
+    ab15_cache.loop=0u;ab15_cache.armed=1u;ab_md.current=first;
+    rc=ab_md_prefetch();
+    if(rc){ab_md.play_active=0u;ab_md.current.valid=ab_md.next.valid=0u;ab_md_restore_saved_pattern();return rc;}
+    return 0;
+}
+/* Mixed album runner: one S or M per slot, advances after the previous
+ * song has stopped. No filesystem calls in the audio interrupt. S playback
+ * uses the existing sequencer; M playback uses the foreground stream player.
+ * Old album references S1..S32 remain byte-for-byte compatible. */
+/* Foreground ALBUM interpreter. PRESET commands take no musical time;
+ * SONG/M-SONG share the existing players. Loop always replays album step 1. */
+static int ab_md_playlist_start(void){
+    uint16_t ref,id;int rc;uint8_t saved_mode;uint32_t scanned;
+    if(!ab_md_playlist_active||!ab_md.album_loaded||!ab_md.album.count)return AB16_ENOTFOUND;
+    for(scanned=0u;scanned<AB13_ALBUM_SLOTS;scanned++){
+        if(ab_md_playlist_slot>=ab_md.album.count){
+            if(!ab_md.album.loop)return AB16_ENOTFOUND;
+            ab_md_playlist_slot=0u;ab_md_playlist_preset_active=0u;
+        }
+        ref=ab_md.album.song_id[ab_md_playlist_slot];
+        if(AB13_ALBUM_IS_PRESET(ref)){
+            id=ref&AB13_ALBUM_PRESET_VALUE_MASK;
+            if(!id||id>32u)return AB16_EINVAL;
+            gu_dz_apply_preset((uint32_t)id-1u);
+            ab_md_playlist_preset_active=1u;
+            ab_md_playlist_slot++;continue;
+        }
+        id=ref&AB_MD_REF_ID;
+        if(!id)return AB16_EINVAL;
+        if(ref&AB_MD_REF_M){
+            if(id>128u)return AB16_EINVAL;
+            rc=ab_m_start(id);
+            if(!rc)ab_md_playlist_started=1u;
+            return rc;
+        }
+        if(id>AB_MD_SONGS)return AB16_EINVAL;
+        saved_mode=ab_md.mode;
+        ab_md.mode=AB5_MODE_SONG;
+        ab_md.song_id=id;
+        ab_md.song_loaded=0u;
+        rc=ab_md_prepare_start();
+        ab_md.mode=saved_mode;
+        if(rc)return rc;
+        ab_md_playlist_started=1u;
+        transport_req=1u;
+        return 0;
+    }
+    return AB16_ESTATE; /* guard against an album containing only commands */
+}
+static void ab_md_playlist_tick(void){
+    int rc;
+    if(!ab_md_playlist_active || !ab_md_playlist_started ||
+       ab_m_playing || ab_md.play_active || song.playing || seq_counting() || transport_req)return;
+    ab_md_playlist_started=0u;
+    ++ab_md_playlist_slot;
+    rc=ab_md_playlist_start();
+    if(rc==AB16_ENOTFOUND){ab_md_playlist_active=0u;ab_md_playlist_preset_active=0u;return;}
+    if(rc){ab_md_playlist_active=0u;ab_md_playlist_preset_active=0u;gu_say("ALBUM PLAY FAILED",0);}
+}
+static int ab_md_next_event(void){
+    int rc;
+    if(!ab_md.play_active||!ab_md.next.valid)return 0;
+    ab15_cache.active=0u;
+    rc=ab15_select(&ab15_cache,ab_md.next.pattern_id?ab_md.next.pattern_id:1u,&ab_md.next_pattern);
+    if(rc)return 0;
+    ab15_cache.loop=0u;ab15_cache.armed=1u;
+    if(ab15_start(&ab15_cache))return 0;
+    ab_md.current=ab_md.next;ab_md.next.valid=0u;ab_md.prefetch_needed=1u;
+    if(ab_md.current.switch_song){
+        ab_md.song_id=ab_md.current.song_id;ab_md.song_loaded=0u;ab_md.request_song_valid=0u;
+    }
+    if(ab_md.current.switch_album){
+        ab_md.album=ab_md.queued_album;ab_md.play_album_id=ab_md.current.album_id;
+        ab_md.album_id=ab_md.current.album_id;ab_md.album_slot=ab_md.current.album_slot;
+        ab_md.album_loaded=1u;ab_md.album_dirty=0u;ab_md.request_album_valid=0u;
+    }
+    ab_md_apply_event(&ab_md.current);
+    return 1;
+}
+static void ab_md_playback_end(void){
+    if(!ab_md.play_active)return;
+    if(ab_md.request_song_valid){ab_md.song_id=ab_md.request_song_id;ab_md.song_loaded=0u;}
+    if(ab_md.request_album_valid){
+        ab_md.album=ab_md.queued_album;ab_md.album_id=ab_md.request_album_id;
+        ab_md.album_loaded=1u;ab_md.album_dirty=0u;
+    }
+    ab_md.play_active=0u;ab_md.current.valid=ab_md.next.valid=0u;ab_md.prefetch_needed=0u;
+    ab_md.request_song_valid=ab_md.request_album_valid=0u;
+    ab_md_restore_saved_pattern();
+    /* Album may have reused the SONG editor buffer. */
+    if(ab_md.play_mode==AB5_MODE_ALBUM)ab_md.song_loaded=0u;
 }
 
 /* seq_stop() calls this after releasing notes, including on ONCE completion. */
@@ -481,6 +1086,15 @@ static void gu_dz_playback_end(void)
 {
     if (!dz_play_has_backup)
         return;
+    if(ab_md.play_active)ab_md_playback_end();
+    else if(ab_md.queued_pattern_valid){
+        ab15_cache.active=0u;
+        if(!ab15_select(&ab15_cache,ab_md.queued_pattern_id,&ab_md.next_pattern)){
+            ab15_cache.loop=ab5_pattern_loop;ab17_init(&ab17_ui_delete,ab15_cache.pattern_id);
+        }
+        ab_md.queued_pattern_valid=0u;
+    }
+    ab15_cache.active=0u;
     dz_arp_source_on = 0u;
     if (gu_t()->arp_note) arp_off(gu_t());
     memcpy(gu_t()->step, dz_play_saved_steps, sizeof dz_play_saved_steps);
@@ -517,6 +1131,15 @@ static void gu_song_begin(void)
     ab5_song_transpose=0;ab5_song_octave=0;
     ab5_switch_request = 0u;
     dz_play_has_backup = 1u;
+    if (ab18_disk_owned && ab15_cache.armed && ab15_cache.loaded) {
+        ab15_cache.loop=ab_md.play_active?0u:ab5_pattern_loop;
+        if (!ab15_start(&ab15_cache)) {
+            ab5_play_active=0u;
+            if(ab_md.play_active)ab_md_apply_event(&ab_md.current);
+            gu_dz_play_pattern();
+            return;
+        }
+    }
     /* PLAY preflight takes place in gu_input(), outside the audio ISR.
      * Never validate/scan all 13,648 v5 bytes inside seq_start(). */
     ab5_play_active = ab5_transport_armed && ab5_prepared_valid;
@@ -533,6 +1156,27 @@ static int gu_song_next(void)
 {
     if (!dz_play_has_backup)
         return 0;                 /* unexpected call: fail safe */
+    if (ab15_cache.active) {
+        if(ab_md.play_active){
+            if(ab15_cache.page==0u && ab15_cache.pattern.length>AB15_PAGE_STEPS){
+                if(!ab15_advance(&ab15_cache))return 0;
+            }else{
+                ab15_cache.loop=0u;(void)ab15_advance(&ab15_cache);
+                if(!ab_md_next_event())return 0;
+            }
+        }else if(ab_md.queued_pattern_valid &&
+                 !(ab15_cache.page==0u && ab15_cache.pattern.length>AB15_PAGE_STEPS)){
+            ab15_cache.active=0u;
+            if(ab15_select(&ab15_cache,ab_md.queued_pattern_id,&ab_md.next_pattern))return 0;
+            ab15_cache.loop=ab5_pattern_loop;ab_md.queued_pattern_valid=0u;
+            if(ab15_start(&ab15_cache))return 0;
+        }else if (!ab15_advance(&ab15_cache)) return 0;
+        seq_release(gu_t());
+        gu_t()->rat_left=0u;
+        gu_t()->nd_late=gu_t()->nd_early=ND_NONE;
+        gu_dz_play_pattern();
+        return 1;
+    }
     if (ab5_play_active) {
         uint32_t requested=ab5_switch_request;
         uint8_t taken=0u;
@@ -590,7 +1234,13 @@ static void gu_prefs_save(void)
 }
 
 /* ------------------------------------------------------------- parameters --- */
-static const param_desc_t *gu_desc(uint32_t id) { return param_desc_of(ENGI_GOLANA, id); }
+static const param_desc_t *gu_desc(uint32_t id)
+{
+    uint32_t engine = gu_t()->eng_req;
+    if (engine != ENGI_GOLANA && id >= P_E0 && id < P_E0 + 8u)
+        return param_desc_of(engine, id);
+    return param_desc_of(ENGI_GOLANA, id);
+}
 
 /* The first 16 steps stay inside the legacy preset, the other 48 in gx. */
 static uint32_t gu_slen(void) { return (uint32_t)clamp(gu_t()->p[P_SLEN], 1, NSTEP); }
@@ -605,14 +1255,55 @@ static void gu_snote_set(step_t *st, uint32_t note)   /* the step a NOTE of note
 }
 static void gu_range(const gu_par_t *q, int32_t *lo, int32_t *hi)
 {
+    if (q->id == GV_AB_SYNTH_MODE) { *lo = 0; *hi = 4; return; }
+    if(ab18_disk_owned){
+        ab13_row *r;
+        switch(q->id){
+        case GV_AB17_PAT: *lo=1;*hi=AB16_PATTERN_ID_MAX;return;
+        case GV_V5_MODE: *lo=0;*hi=AB5_MODE_ALBUM;return;
+        case GV_V5_SONG: *lo=1;*hi=(ab_md.mode==AB5_MODE_SONG && GU_PAGES[gu.page].k[0].id==GV_AB17_PAT?AB_MD_REF_UI_MAX:AB_MD_SONGS);return;
+        case GV_V5_ROW: *lo=1;*hi=AB_MD_ROWS;return;
+        case GV_V5_KIND: *lo=0;*hi=AB_MD_KIND_BEGIN;return;
+        case GV_V5_VALUE:
+            if(!ab_md.song_loaded){*lo=0;*hi=0;return;}
+            r=ab_md_row();
+            if(r->op==AB13_OP_PATTERN){*lo=1;*hi=AB16_PATTERN_ID_MAX;}
+            else if(r->op==AB13_OP_TEMPO){*lo=0;*hi=240;}
+            else if(r->op==AB13_OP_PRESET){*lo=1;*hi=32;}
+            else if(r->op==AB13_OP_REST){*lo=AB13_MIN_STEPS;*hi=AB13_MAX_STEPS;}
+            else if(r->op==AB13_OP_ARP){*lo=0;*hi=1;}
+            else {*lo=0;*hi=0;}
+            return;
+        case GV_V5_ALBUM: *lo=1;*hi=AB_MD_ALBUMS;return;
+        case GV_V5_SLOT: *lo=1;*hi=AB13_ALBUM_SLOTS;return;
+        case GV_V5_ALBUM_SONG: *lo=1;*hi=ab_md_album_kind()==1?32:AB_MD_REF_UI_MAX;return;
+        case GV_AB_ALBUM_KIND: *lo=0;*hi=2;return;
+        case GV_AB_PLAY_REPEAT: case GV_V5_SONG_LOOP: case GV_V5_ALBUM_LOOP: *lo=0;*hi=1;return;
+        default:break;
+        }
+    }
     switch (q->id) {
+    case GV_AB17_PAT: *lo=1; *hi=AB16_PATTERN_ID_MAX; return;
+    case GV_AB17_STEP: *lo=1; *hi=ab15_cache.loaded?ab15_cache.pattern.length:1; return;
+    case GV_AB17_LEN: *lo=8; *hi=128; return;
+    case GV_AB17_DEL: *lo=0; *hi=AB17_CONFIRM_TICKS; return;
+    case GV_MD_NOTE: *lo=0; *hi=127; return;
+    case GV_MD_TYPE: *lo=0; *hi=2; return;
+    case GV_MD_FLAGS: *lo=0; *hi=3; return;
+    case GV_MD_VELO: case GV_MD_GATE: *lo=1; *hi=127; return;
+    case GV_MD_SWING: *lo=0; *hi=100; return;
+    case GV_MD_RES: *lo=0; *hi=5; return;
     case GV_RES: *lo = 0; *hi = 5; return;
+    case GL_O1WAVE:
+        *lo=gu_desc(q->id)->min;*hi=gu_desc(q->id)->max;return;
     case GV_BPM: *lo = GP[G_BPM].min; *hi = GP[G_BPM].max; return;
     case GV_TUNE: *lo = GP[G_TUNE].min; *hi = GP[G_TUNE].max; return;
     case GV_CLOCK: *lo = 0; *hi = 2; return;
     case GV_STEP: *lo = 1; *hi = 8; return;
     case GV_STEPON: *lo = 0; *hi = 1; return;
     case GV_MIDI: *lo = 0; *hi = 1; return;
+    case GV_AB_USBHOST: *lo = 0; *hi = 3; return;
+    case GV_AB_USB_GAIN: *lo = 0; *hi = 100; return;
     case GV_PAL: *lo = 0; *hi = 3; return;
     case GV_VIEW: *lo = 0; *hi = 2; return;
     case GV_SSTEP: *lo = 1; *hi = gu_slen(); return;
@@ -689,7 +1380,71 @@ static int32_t gu_get(const gu_par_t *q)
 {
     const int16_t *p = gu_t()->p;
     uint32_t i;
+    if(ab18_disk_owned){
+        ab13_row *r;
+        switch(q->id){
+        case GV_V5_MODE:return ab_md.mode;
+        case GV_V5_SONG:
+            if(ab_md.mode==AB5_MODE_SONG && GU_PAGES[gu.page].k[0].id==GV_AB17_PAT)
+                return ab_md_ref_to_ui(ab_md_play_song_ref);
+            if(ab_md.play_active&&ab_md.play_mode==AB5_MODE_SONG&&ab_md.request_song_valid)return ab_md.request_song_id;
+            return ab_md.play_active&&ab_md.play_mode==AB5_MODE_SONG?ab_md.current.song_id:(ab_md.song_id?ab_md.song_id:1);
+        case GV_V5_ROW:return (int32_t)ab_md.song_row+1;
+        case GV_V5_KIND:return ab_md.song_loaded?ab_md_kind_from_op(ab_md_row()->op):AB_MD_KIND_END;
+        case GV_V5_VALUE:
+            if(!ab_md.song_loaded)return 0;
+            r=ab_md_row();
+            if(r->op==AB13_OP_PATTERN)return r->pattern_id;
+            if(r->op==AB13_OP_REST)return r->steps;
+            if(r->op==AB13_OP_TEMPO||r->op==AB13_OP_PRESET||r->op==AB13_OP_ARP)return r->value;
+            return 0;
+        case GV_V5_ALBUM:
+            if(ab_md.play_active&&ab_md.play_mode==AB5_MODE_ALBUM&&ab_md.request_album_valid)return ab_md.request_album_id;
+            return ab_md.play_active&&ab_md.play_mode==AB5_MODE_ALBUM?ab_md.play_album_id:(ab_md.album_id?ab_md.album_id:1);
+        case GV_V5_SLOT:return (int32_t)ab_md.album_slot+1;
+        case GV_V5_ALBUM_SONG:
+            if(!ab_md.album_loaded||ab_md.album_slot>=ab_md.album.count)return 1;
+            if(ab_md_album_kind()==1)return ab_md.album.song_id[ab_md.album_slot]&AB13_ALBUM_PRESET_VALUE_MASK;
+            return ab_md_ref_to_ui(ab_md.album.song_id[ab_md.album_slot]);
+        case GV_AB_ALBUM_KIND:return ab_md_album_kind();
+        case GV_AB_PLAY_REPEAT:
+            if(ab_md.mode==AB5_MODE_SONG && (ab_md_play_song_ref&AB_MD_REF_M))return ab_md_m_loop;
+            if(ab_md.mode==AB5_MODE_PATTERN)return ab5_pattern_loop;
+            if(ab_md.mode==AB5_MODE_SONG){
+                if(ab_md.play_active&&ab_md.play_mode==AB5_MODE_SONG)
+                    return ab_md.request_song_valid?ab_md_songbuf(ab_md.request_song_buf)->loop:
+                           ab_md_songbuf(ab_md.current.song_buf)->loop;
+                return ab_md.song_loaded?ab_md.song.loop:0;
+            }
+            if(ab_md.play_active&&ab_md.play_mode==AB5_MODE_ALBUM&&ab_md.request_album_valid)return ab_md.queued_album.loop;
+            return ab_md.album_loaded?ab_md.album.loop:0;
+        case GV_V5_SONG_LOOP:return ab_md.song_loaded?ab_md.song.loop:0;
+        case GV_V5_ALBUM_LOOP:return ab_md.album_loaded?ab_md.album.loop:0;
+        default:break;
+        }
+    }
     switch (q->id) {
+    case GV_AB17_PAT:
+        if(ab18_disk_owned&&ab_md.mode==AB5_MODE_PATTERN&&ab_md.queued_pattern_valid&&
+           GU_PAGES[gu.page].btn==B_SEQ&&GU_PAGES[gu.page].k[0].id==GV_AB17_PAT)
+            return ab_md.queued_pattern_id;
+        return ab15_cache.pattern_id;
+    case GV_AB17_STEP: return ab17_ui_delete.step;
+    case GV_AB17_LEN: return ab15_cache.loaded?ab15_cache.pattern.length:0;
+    case GV_AB17_DEL: return ab17_ui_delete.pending?ab17_ui_delete.progress:0;
+    case GV_MD_NOTE: return ab15_cache.loaded?ab15_cache.pattern.steps[ab_fix_step()].note:0;
+    case GV_MD_TYPE: return ab15_cache.loaded?ab15_event_type(&ab15_cache.pattern.steps[ab_fix_step()]):0;
+    case GV_MD_FLAGS: return ab15_cache.loaded?(ab15_cache.pattern.steps[ab_fix_step()].flags&3u):0;
+    case GV_MD_VELO: return ab15_cache.loaded?ab15_cache.pattern.steps[ab_fix_step()].velocity:0;
+    case GV_MD_GATE: return ab15_cache.loaded?ab15_cache.pattern.steps[ab_fix_step()].gate:0;
+    case GV_MD_SWING: return ab15_cache.loaded?ab15_cache.pattern.steps[ab_fix_step()].swing:0;
+    case GV_MD_RES: return ab15_cache.loaded?ab15_cache.pattern.resolution:2;
+    case GV_AB_SYNTH_MODE:
+        if (gu_t()->eng_req == 0u) return 2;
+        if (gu_t()->eng_req == 3u) return 3;
+        if (gu_t()->eng_req == ENGI_B1) return 4;
+        return gu_t()->p[P_GLSYNTH] == 1 ? 1 : 0;
+    case P_GLSYNTH: return gu_t()->p[P_GLSYNTH]==1 ? 1 : 0;
     case GV_RES:
         for (i = 0; i < 6u && GU_RES_DIV[i] != p[P_ARATE]; i++)
             ;
@@ -700,6 +1455,8 @@ static int32_t gu_get(const gu_par_t *q)
     case GV_STEP: return gu.step + 1;
     case GV_STEPON: return (int32_t)((gu_steps() >> gu.step) & 1u);
     case GV_MIDI: return song.g[G_ROUTE] == 1 ? 0 : 1;
+    case GV_AB_USBHOST: return (int32_t)ab_usb4_current_mode();
+    case GV_AB_USB_GAIN: return (int32_t)ab_usb6_get_gain();
     case GV_PAL: return gu_pi;
     case GV_VIEW: return gu_view;
     case GV_SSTEP: return gu.sstep + 1;
@@ -753,27 +1510,9 @@ static int32_t gu_get(const gu_par_t *q)
     }
 }
 
-static void gu_say(const char *a, const char *b); /* declared below: flash-block toast */
+
 static void gu_dz_editor_change_pattern(uint8_t bank, uint8_t pattern);
 static void ab5_mark_dirty(void) { ab5_dirty=1u; ab5_edited_ms=fm1_ms; }
-static void ab5_store_poll(void)
-{
-    int rc;
-    if (!ab5_dirty || !ab5_store_enabled || !flash_ok || ui.uboot || ab5_play_active ||
-        dz_play_has_backup || gu.dz_edit_active || gu.save || transport_busy() ||
-        fm1_ms-ab5_edited_ms<1800u || fm1_ms-ab5_last_try_ms<5000u) return;
-    ab5_last_try_ms=fm1_ms;
-    if (ab5_extra_validate(&ab5_model)) {ab5_store_error=1u;return;}
-    rc=ab5_nor_save(&dz_ab_io,&ab5_state,ab5_extra_get,&ab5_model);
-    if (rc) {
-        ab5_store_error=1u;
-        if (rc==-3 || rc==-4) ab5_store_enabled=0u; /* FOREIGN: never retry writes */
-        gu_say("V5 SAVE FAILED",0);
-        return;
-    }
-    ab5_dirty=0u;ab5_store_error=0u;
-    ab5_boot_status=AB5_BOOT_V5_VALID;
-}
 static void gu_dz_mark_dirty(void)
 {
     dz_store_mark_dirty();
@@ -785,6 +1524,211 @@ static void gu_set(const gu_par_t *q, int32_t v)
     int32_t lo, hi;
     gu_range(q, &lo, &hi);
     v = clamp(v, lo, hi);
+    if (q->id == GV_AB_SYNTH_MODE) {
+        uint32_t target = v == 2 ? 0u : v == 3 ? 3u : v == 4 ? ENGI_B1 : ENGI_GOLANA;
+        if (target != t->eng_req) {
+            /* The existing UI engine setter performs IRQ-safe preset init and
+               the audio ISR fades/reclaims the per-part DSP on transition. */
+            set_engine_of(t, target);
+            if (target == ENGI_GOLANA) gu_load(gu.prog);
+            else {
+                str_cpy(gu.name, ENGINES[target]->name, sizeof gu.name);
+                gu.dirty = 1;
+            }
+        }
+        if (target == ENGI_GOLANA && t->p[P_GLSYNTH] != v) {
+            t->p[P_GLSYNTH] = (int16_t)v;
+            panic_req |= 1u;
+            gu.dirty = 1;
+        }
+        gu.sig_head = gu.sig_list = gu.sig_body = 0;
+        gu.sig_card[0] = gu.sig_card[1] = gu.sig_card[2] = gu.sig_card[3] = 0;
+        return;
+    }
+    if(q->id>=GV_MD_NOTE && q->id<=GV_MD_RES){
+        ab13_step *st;uint8_t step,typ;int rc=0;
+        /* Live REC edits the SAME MD16 RAM pattern used by playback.
+         * It must not edit a different song/album pattern or trigger flash IO. */
+        if(!ab_fix_rec_page() || !ab15_cache.loaded || gu.save ||
+           ab_m_playing || ab_md.play_active || ab_md_playlist_active ||
+           (song.playing && !ab15_cache.active) ||
+           (transport_busy() && !ab15_cache.active))return;
+        step=ab_fix_step();st=&ab15_cache.pattern.steps[step];
+        /* Audio ISR reads ab15_cache while turning steps into notes. Lock
+         * the entire edit, then refresh precisely ONE currently playing step. */
+        uint32_t live_irq=irq_save();
+        switch(q->id){
+        case GV_MD_NOTE: rc=ab15_note(&ab15_cache,step,(uint8_t)v);break;
+        case GV_MD_TYPE:
+            typ=(uint8_t)v;
+            rc=typ==0u?ab15_rest(&ab15_cache,step):
+                 typ==2u?ab15_tie(&ab15_cache,step):
+                 ab15_note(&ab15_cache,step,st->note?st->note:60u);
+            break;
+        case GV_MD_FLAGS:
+            rc=ab15_step_flag(&ab15_cache,step,1u,(v&1u)!=0u);
+            if(!rc)rc=ab15_step_flag(&ab15_cache,step,2u,(v&2u)!=0u);
+            break;
+        case GV_MD_VELO: st->velocity=(uint8_t)v;ab15_cache.dirty=1u;break;
+        case GV_MD_GATE: st->gate=(uint8_t)v;ab15_cache.dirty=1u;break;
+        case GV_MD_SWING: st->swing=(uint8_t)v;ab15_cache.dirty=1u;break;
+        case GV_MD_RES: ab15_cache.pattern.resolution=(uint8_t)v;ab15_cache.dirty=1u;break;
+        default:break;
+        }
+        if(!rc && ab15_cache.active){
+            const uint32_t base=(uint32_t)ab15_cache.page*AB15_PAGE_STEPS;
+            if(step>=base && (uint32_t)step<base+NSTEP){
+                const ab13_step *a=&ab15_cache.pattern.steps[step];
+                step_t *dst=&gu_t()->step[(uint32_t)step-base];
+                memset(dst,0,sizeof *dst);
+                if(ab15_event_type(a)==AB15_TIE)dst->time=ST_TIE;
+                else if(ab15_event_type(a)==AB15_NOTE){
+                    dst->time=ST_NOTE;dst->n=1u;dst->note[0]=a->note;
+                    dst->vel=a->velocity;dst->flags=(uint8_t)(a->flags&(SF_ACCENT|SF_SLIDE));
+                }else dst->time=ST_REST;
+            }
+            if(q->id==GV_MD_RES)gu_t()->p[P_SDIV]=ab15_cache.pattern.resolution;
+        }
+        irq_restore(live_irq);
+        if(rc)gu_say("EDIT FAILED",0);
+        ui.force=1u;
+        return;
+    }
+    /* The new MUSIC PAT hardware page owns its knobs in gu_turn(), not gu_set(). */
+    if (q->id>=GV_AB17_PAT && q->id<=GV_AB17_DEL) return;
+    if(ab18_disk_owned &&
+       (q->id==GV_V5_MODE || q->id==GV_V5_SONG || q->id==GV_V5_ROW ||
+        q->id==GV_V5_KIND || q->id==GV_V5_VALUE || q->id==GV_V5_ALBUM ||
+        q->id==GV_V5_SLOT || q->id==GV_V5_ALBUM_SONG || q->id==GV_AB_ALBUM_KIND ||
+        q->id==GV_AB_PLAY_REPEAT || q->id==GV_V5_SONG_LOOP || q->id==GV_V5_ALBUM_LOOP)){
+        ab13_row *r;int rc=0;
+        if(song.playing && ab_md.mode==AB5_MODE_PATTERN && q->id==GV_AB_PLAY_REPEAT &&
+           GU_PAGES[gu.page].btn==B_SEQ && ab15_cache.active){
+            ab5_pattern_loop=(uint8_t)v;ab15_cache.loop=ab5_pattern_loop;ui.force=1u;return;
+        }
+        if(song.playing && ab_md.play_active && GU_PAGES[gu.page].btn==B_SEQ){
+            if(q->id==GV_V5_SONG && ab_md.play_mode==AB5_MODE_SONG){
+                if(v>AB_MD_SONGS){gu_say("STOP FIRST",0);return;} /* S->M requires a stopped transport */
+                rc=ab_md_queue_song((uint16_t)v);
+                if(rc){gu_say(rc==AB16_ENOTFOUND?"SONG EMPTY":"SONG LOAD FAIL",0);return;}
+                ui.force=1u;return;
+            }
+            if(q->id==GV_V5_ALBUM && ab_md.play_mode==AB5_MODE_ALBUM){
+                rc=ab_md_queue_album((uint16_t)v);
+                if(rc){gu_say(rc==AB16_ENOTFOUND?"ALBUM EMPTY":"ALBUM LOAD FAIL",0);return;}
+                ui.force=1u;return;
+            }
+            if(q->id==GV_AB_PLAY_REPEAT){
+                if(ab_md.play_mode==AB5_MODE_SONG){
+                    ab13_song *sg=ab_md.request_song_valid?ab_md_songbuf(ab_md.request_song_buf):ab_md_songbuf(ab_md.current.song_buf);
+                    sg->loop=(uint8_t)v;
+                }else if(ab_md.play_mode==AB5_MODE_ALBUM){
+                    if(ab_md.request_album_valid)ab_md.queued_album.loop=(uint8_t)v;else ab_md.album.loop=(uint8_t)v;
+                }
+                ui.force=1u;return;
+            }
+        }
+        if(ab_md_playlist_active || ab_m_playing || song.playing || transport_busy() ||
+           ab15_cache.active || gu.save){gu_say("STOP FIRST",0);return;}
+        switch(q->id){
+        case GV_V5_MODE:
+            ab_md.mode=(uint8_t)v;
+            if(ab_md.mode==AB5_MODE_SONG && !ab_md.song_loaded)
+                (void)ab_md_song_select(ab_md.song_id?ab_md.song_id:1u,0);
+            if(ab_md.mode==AB5_MODE_ALBUM && !ab_md.album_loaded)
+                (void)ab_md_album_select(ab_md.album_id?ab_md.album_id:1u,0);
+            if(ab_md.mode==AB5_MODE_SONG){
+                if(!ab_md_ref_present(ab_md_play_song_ref)){
+                    uint16_t first;
+                    if(!ab_md_first_ref(&first))ab_md_play_song_ref=first;
+                }
+                if(!(ab_md_play_song_ref&AB_MD_REF_M) && !ab_md.song_dirty)
+                    (void)ab_md_song_select((uint16_t)(ab_md_play_song_ref&AB_MD_REF_ID),0);
+            }
+            if(ab_md.mode==AB5_MODE_ALBUM && !ab_md.album_loaded){
+                uint32_t first;
+                if(!ab18_fast_first(AB16_ALBUM,&first))
+                    (void)ab_md_album_select((uint16_t)first,0);
+            }
+            break;
+        case GV_V5_SONG:
+            if(ab_md.mode==AB5_MODE_SONG && GU_PAGES[gu.page].k[0].id==GV_AB17_PAT){
+                uint16_t ref=ab_md_ref_from_ui((uint16_t)v);
+                if(!ab_md_ref_present(ref)){gu_say("SONG EMPTY",0);return;}
+                if(!(ref&AB_MD_REF_M)){
+                    rc=ab_md_song_select((uint16_t)(ref&AB_MD_REF_ID),0);
+                    if(rc){gu_say("SONG LOAD FAIL",0);return;}
+                }
+                ab_md_play_song_ref=ref;
+                ui.force=1u;break;
+            }
+            rc=ab_md_song_select((uint16_t)v,
+                GU_PAGES[gu.page].k[0].id==GV_V5_SONG);
+            if(rc==AB16_ESTATE){gu_say("SAVE FIRST",0);return;}
+            if(rc==AB16_ENOTFOUND)gu_say("SONG EMPTY",0);
+            else if(rc){gu_say("SONG LOAD FAIL",0);return;}
+            if(!rc)ab_md_play_song_ref=(uint16_t)v; /* SONG EDIT selection is also PLAY selection */
+            break;
+        case GV_V5_ROW:
+            ab_md.song_row=(uint8_t)(v-1);break;
+        case GV_V5_KIND:
+            if(!ab_md.song_loaded){gu_say("SONG EMPTY",0);return;}
+            rc=ab_md_set_kind((uint8_t)v);
+            if(rc){gu_say("NO PATTERN",0);return;}
+            break;
+        case GV_V5_VALUE:
+            if(!ab_md.song_loaded){gu_say("SONG EMPTY",0);return;}
+            r=ab_md_row();
+            if(r->op==AB13_OP_PATTERN){
+                int length=ab_md_pattern_length((uint16_t)v);
+                if(!length){gu_say("PAT MISSING",0);return;}
+                r->pattern_id=(uint16_t)v;r->steps=(uint16_t)length;
+            }else if(r->op==AB13_OP_REST)r->steps=(uint16_t)v;
+            else if(r->op==AB13_OP_TEMPO||r->op==AB13_OP_PRESET||r->op==AB13_OP_ARP)r->value=(int16_t)v;
+            else return;
+            ab_md.song_dirty=1u;break;
+        case GV_V5_ALBUM:
+            rc=ab_md_album_select((uint16_t)v,
+                GU_PAGES[gu.page].k[0].id==GV_V5_ALBUM);
+            if(rc==AB16_ESTATE){gu_say("SAVE FIRST",0);return;}
+            if(rc==AB16_ENOTFOUND)gu_say("ALBUM EMPTY",0);
+            else if(rc){gu_say("ALBUM LOAD FAIL",0);return;}
+            break;
+        case GV_V5_SLOT:
+            ab_md.album_slot=(uint8_t)(v-1);break;
+        case GV_AB_ALBUM_KIND:
+            if(!ab_md.album_loaded){gu_say("ALBUM EMPTY",0);return;}
+            if(ab_md_album_set_kind((int)v)){gu_say("SET PREV STEP",0);return;}
+            break;
+        case GV_V5_ALBUM_SONG:
+            if(!ab_md.album_loaded||ab_md.album_slot>=ab_md.album.count){gu_say("SET TYPE FIRST",0);return;}
+            if(ab_md_album_kind()==1){
+                if(v<1||v>32)return;
+                ab_md.album.song_id[ab_md.album_slot]=AB13_ALBUM_PRESET_REF((uint16_t)v);
+            }else{
+                if(!ab_md_ref_present(ab_md_ref_from_ui((uint16_t)v))){gu_say("SONG MISSING",0);return;}
+                ab_md.album.song_id[ab_md.album_slot]=ab_md_ref_from_ui((uint16_t)v);
+            }
+            ab_md.album_dirty=1u;break;
+        case GV_AB_PLAY_REPEAT:
+            if(ab_md.mode==AB5_MODE_SONG && (ab_md_play_song_ref&AB_MD_REF_M)){ab_md_m_loop=(uint8_t)v;break;}
+            if(ab_md.mode==AB5_MODE_PATTERN){ab5_pattern_loop=(uint8_t)v;ab15_cache.loop=ab5_pattern_loop;}
+            else if(ab_md.mode==AB5_MODE_SONG){
+                if(!ab_md.song_loaded){gu_say("SONG EMPTY",0);return;}
+                ab_md.song.loop=(uint8_t)v;
+            }else{
+                if(!ab_md.album_loaded){gu_say("ALBUM EMPTY",0);return;}
+                ab_md.album.loop=(uint8_t)v;
+            }
+            break;
+        case GV_V5_SONG_LOOP:
+            if(ab_md.song_loaded){ab_md.song.loop=(uint8_t)v;ab_md.song_dirty=1u;}break;
+        case GV_V5_ALBUM_LOOP:
+            if(ab_md.album_loaded){ab_md.album.loop=(uint8_t)v;ab_md.album_dirty=1u;}break;
+        default:break;
+        }
+        ui.force=1u;return;
+    }
     if (q->id == GV_AB_PLAY_REPEAT) {
         /* A running v5 SONG may switch LOOP/ONCE: ab5_seek() reads the
          * selected song's loop flag again at its next END. Do not allow
@@ -893,6 +1837,11 @@ static void gu_set(const gu_par_t *q, int32_t v)
     case GV_CLOCK: song.g[G_CLOCK] = (int16_t)v; return;
     case GV_STEP: gu.step = (uint8_t)(v - 1); return;
     case GV_MIDI: song.g[G_ROUTE] = (int16_t)(v ? 0 : 1); return;
+    case GV_AB_USBHOST:
+        if (song.playing || transport_busy() || sx_busy || sx_collect || sx_ready) { gu_say("STOP FIRST", 0); return; }
+        ab_usb4_set_mode((uint32_t)v); return;
+    case GV_AB_USB_GAIN:
+        ab_usb6_set_gain((uint32_t)v); return;
     case GV_PAL:
     case GV_VIEW:
         if (q->id == GV_PAL)
@@ -1005,6 +1954,35 @@ static void gu_text(const gu_par_t *q, char *b)
         b[0] = 0;
         return;
     }
+    if(q->id==GV_AB17_PAT){b[0]='P';fmt_int(b+1,v);return;}
+    if(q->id==GV_MD_NOTE && ab18_disk_owned){
+        static const char *const NN[12]={"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+        const ab13_step *st=ab15_cache.loaded?&ab15_cache.pattern.steps[ab_fix_step()]:0;
+        if(!st || !(st->flags&AB13_STEP_PRESENT)) {str_cpy(b,"--",4);return;}
+        str_cpy(b,NN[v%12],4);fmt_int(b+str_len(b),v/12-1);return;
+    }
+    if(ab18_disk_owned && q->id==GV_V5_KIND){
+        static const char *const K[]={"PATTERN","TEMPO","PRESET","REST","ARP","END","BEGIN"};
+        str_cpy(b,K[clamp(v,0,AB_MD_KIND_BEGIN)],12);return;
+    }
+    if(ab18_disk_owned && q->id==GV_V5_VALUE){
+        ab13_row *r=ab_md.song_loaded?ab_md_row():0;
+        if(!r||r->op==AB13_OP_END){str_cpy(b,"--",8);return;}
+        if(r->op==AB13_OP_ARP){str_cpy(b,v?"ON":"OFF",8);return;}
+        if(r->op==AB13_OP_PATTERN||r->op==AB13_OP_PRESET){b[0]='P';fmt_int(b+1,v);return;}
+    }
+    if(ab18_disk_owned && q->id==GV_V5_SONG && ab_md.mode==AB5_MODE_SONG && GU_PAGES[gu.page].k[0].id==GV_AB17_PAT){
+        uint16_t ref=ab_md_ref_from_ui((uint16_t)v);
+        b[0]=(ref&AB_MD_REF_M)?'M':'S';fmt_int(b+1,ref&AB_MD_REF_ID);return;
+    }
+    if(ab18_disk_owned && q->id==GV_V5_ALBUM_SONG){
+        if(ab_md_album_kind()==1){b[0]='P';fmt_int(b+1,v);return;}
+        uint16_t ref=ab_md_ref_from_ui((uint16_t)v);
+        if(ref&AB_MD_REF_M){b[0]='M';fmt_int(b+1,ref&AB_MD_REF_ID);}
+        else {b[0]='S';fmt_int(b+1,ref);}
+        return;
+    }
+    if(q->id==GV_MD_RES){str_cpy(b,gu_desc(P_SDIV)->names[v<6?v:2],12);return;}
     if (q->id == GV_V5_EDIT_NOTE) {
         static const char *const NN[12]={"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
         if (ab5_ui_get(&ab5_model,AB5_UI_EDIT_TYPE)!=1) {str_cpy(b,"--",4);return;}
@@ -1155,12 +2133,19 @@ static void gu_draw_head(void)
     uint32_t h = 0x811C9DC5u;
     int32_t x;
     int toast = gu_toast_on();
-    n[0] = 'P';
-    n[1] = (char)('0' + (gu.prog + 1u) / 10u);
-    n[2] = (char)('0' + (gu.prog + 1u) % 10u);
+    {
+        uint32_t ord = gu_browser < GL_NPROG ? (uint32_t)gu_browser + 1u :
+                       gu_browser < GL_NPROG + GU_FACTORY_ANALOG ?
+                       (uint32_t)gu_browser - GL_NPROG + 1u :
+                       (uint32_t)gu_browser - GL_NPROG - GU_FACTORY_ANALOG + 1u;
+        n[0] = gu_browser < GL_NPROG ? 'P' :
+               gu_browser < GL_NPROG + GU_FACTORY_ANALOG ? 'A' : 'L';
+        n[1] = (char)('0' + ord / 10u);
+        n[2] = (char)('0' + ord % 10u);
+    }
     n[3] = 0;
     h = gu_hash(h, toast ? gu.toast : gu.name);
-    h = gu_hashv(h, (int32_t)(gu.prog | gu.dirty << 8 | toast << 9 | (t->p[GL_ARPON] != 0) << 10 |
+    h = gu_hashv(h, (int32_t)(gu_browser | gu.dirty << 8 | toast << 9 | (t->p[GL_ARPON] != 0) << 10 |
                               (uint32_t)(song.octave + 8) << 12 | (uint32_t)(song.playing != 0) << 16 |
                               (uint32_t)batt_shown() << 20));
     h=gu_hashv(h,(int32_t)ab5_live_transpose);
@@ -1257,6 +2242,8 @@ static const gu_par_t *gu_pk(const gu_page_t *pg, uint32_t k)
     static const gu_par_t PLAY_SONG={GV_V5_SELECT,"SONG",0,0};
     static const gu_par_t PLAY_ALBUM={GV_V5_SELECT,"ALBUM",0,0};
     static const gu_par_t PLAY_NEXT_SONG={GV_AB_PLAY_ALBUM_SONG,"NEXT SONG",0,0};
+    static const gu_par_t PLAY_MD_SONG={GV_V5_SONG,"SONG",0,0};
+    static const gu_par_t PLAY_MD_ALBUM={GV_V5_ALBUM,"ALBUM",0,0};
     /* Existing three REC pages edit E-H when the PLAY bank is E-H. */
     static const gu_par_t REC5_STEP[4] = {
         {GV_V5_EDIT_STEP,"STEP",0,0}, {GV_V5_EDIT_NOTE,"NOTE",0,0},
@@ -1279,6 +2266,28 @@ static const gu_par_t *gu_pk(const gu_page_t *pg, uint32_t k)
         {GL_MIX1, "SAW", 0}, {GL_MIX2, "PULSE", 0},
         {GL_NOISE, "TRI", 0}, {P_GLB_SUB, "SUB", 0}
     };
+    if(ab18_disk_owned && pg->btn==B_SEQ && pg->k[0].id==GV_AB17_PAT){
+        if(k==0u){
+            if(ab_md.mode==AB5_MODE_PATTERN)return &pg->k[0];
+            return ab_md.mode==AB5_MODE_SONG?&PLAY_MD_SONG:&PLAY_MD_ALBUM;
+        }
+        if(k==1u && ab_md.mode!=AB5_MODE_PATTERN)return &HIDDEN;
+        return &pg->k[k];
+    }
+    if(ab18_disk_owned && pg->k[0].id==GV_V5_SONG && k==3u)
+        return ab_md.song_loaded && ab_md_row()->op!=AB13_OP_END?&pg->k[k]:&HIDDEN;
+    if(ab18_disk_owned && pg->k[0].id==GV_V5_ALBUM && k==3u)
+        return ab_md_album_kind()!=2?&pg->k[k]:&HIDDEN;
+    if(ab18_disk_owned && pg->btn==B_REC){
+        static const gu_par_t MD_STEP[4]={
+            {GV_AB17_STEP,"STEP",0}, {GV_MD_NOTE,"NOTE",0},
+            {GV_MD_TYPE,"TYPE",GN(N_GSTYPE)}, {GV_MD_FLAGS,"ACC / SLIDE",GN(N_GSFLAG)}};
+        static const gu_par_t MD_TIME[4]={
+            {GV_AB17_STEP,"STEP",0}, {GV_MD_VELO,"VELO",0},
+            {GV_MD_GATE,"GATE",0}, {GV_MD_SWING,"SWING",0}};
+        if(pg->k[1].id==GV_SNOTE)return &MD_STEP[k];
+        if(pg->k[1].id==GV_SVELO)return &MD_TIME[k];
+    }
     if (pg->btn==B_REC && gu.v5_rec_active) {
         /* Both original STEP and TIME pages use GV_SSTEP as knob 1.
          * Distinguish them by knob 2 instead; never mirror STEP onto TIME. */
@@ -1294,12 +2303,30 @@ static const gu_par_t *gu_pk(const gu_page_t *pg, uint32_t k)
         if (k==1u && ab5_model.play_mode==AB5_MODE_ALBUM) return &PLAY_NEXT_SONG;
         if (k==1u && ab5_model.play_mode==AB5_MODE_SONG) return &HIDDEN;
     }
-    if (pg->k[0].id == GV_V5_ALBUM && k==3u &&
-        ab5_model.album_cursor >= ab5_model.albums[ab5_model.selected_album].count)
-        return &HIDDEN;
+    if (pg->k[0].id == GV_V5_ALBUM && k == 3u) {
+        if (ab18_disk_owned) {
+            /* CLEANUP6 MUSIC DISK: K4 editable for SONG/PRESET, hidden at END. */
+            if (ab_md_album_kind() == 2) return &HIDDEN;
+        } else if (ab5_model.album_cursor >=
+                   ab5_model.albums[ab5_model.selected_album].count) {
+            return &HIDDEN;
+        }
+    }
     if (pg->k[0].id == GV_V5_SONG && k==3u &&
         ab5_model.songs[ab5_model.selected_song].rows[ab5_model.song_cursor].bank==AB5_CMD_END)
         return &HIDDEN;
+    if (gu_t()->eng_req != ENGI_GOLANA && pg->btn == B_EDIT &&
+        (pg->k[0].id == GL_O1WAVE || pg->k[0].id == GL_O2WAVE)) {
+        static gu_par_t ext_param[4];
+        const engine_t *eng = ENGINES[gu_t()->eng_req];
+        uint32_t idx = k + (pg->k[0].id == GL_O2WAVE ? 4u : 0u);
+        const param_desc_t *d = &eng->edit[idx];
+        ext_param[k].id = (uint8_t)(P_E0 + idx);
+        ext_param[k].label = d->label;
+        ext_param[k].names = 0;
+        ext_param[k].nn = 0u; /* gu_desc supplies enum names and bounds */
+        return &ext_param[k];
+    }
     if (gu_t()->p[P_GLSYNTH] == 1) {
         if (pg->k[0].id == GL_O1WAVE) return &BR_OSC1[k];
         if (pg->k[0].id == GL_O2WAVE) return &BR_OSC2[k];
@@ -1525,6 +2552,43 @@ static void gu_draw_uboot(void)
     cv_blit(0, 136);
 }
 
+/* Service page is hidden until GLO is held for >=5000 ms. */
+static uint8_t ab20_menu_mode; /* 0 normal, 1 confirm, 2 cleared, 3 failed */
+static uint8_t ab20_k4_count,ab20_glo_tracking,ab20_glo_latched;
+static uint32_t ab20_glo_start;
+static int ab20_menu_result;
+static void ab20_render_menu(void){
+    static int32_t last=-1;
+    int32_t sig=(int32_t)ab20_menu_mode*10+(int32_t)ab20_k4_count;
+    if(!ui.force&&last==sig)return;
+    last=sig;ui.force=0;
+    lcd_fill(0,0,240,240,GC_BG);
+    cv_begin(240,104,GC_BG);
+    cv_text(14,20,&AF_M,"MUSIC DISK",GC_TEXT);
+    if(ab20_menu_mode==1u){
+        cv_text(14,51,&AF_M,"DISK LOESCHEN?",GC_AMBER);
+        cv_text(14,78,&AF_S,"K4 5x LINKS BESTAETIGEN",GC_MID);
+    }else if(ab20_menu_mode==2u){
+        cv_text(14,54,&AF_M,"DISK GELEERT",GC_AMBER);
+    }else{
+        cv_text(14,54,&AF_M,"LOESCHEN FEHLER",GC_AMBER);
+    }
+    cv_blit(0,32);
+    cv_begin(240,104,GC_BG);
+    if(ab20_menu_mode==1u){
+        char count[4];
+        count[0]=(char)('0'+ab20_k4_count);count[1]='/';count[2]='5';count[3]=0;
+        cv_text(14,16,&AF_L,count,GC_TEXT);
+        cv_text(14,73,&AF_S,"HOME = ABBRECHEN",GC_MID);
+    }else if(ab20_menu_mode==2u){
+        cv_text(14,34,&AF_S,"SAMPLES + PRESETS LEER",GC_MID);
+        cv_text(14,73,&AF_S,"HOME = ZURUECK",GC_TEXT);
+    }else{
+        cv_text(14,34,&AF_S,"DATEN NICHT SICHER LEER",GC_MID);
+        cv_text(14,73,&AF_S,"HOME = ZURUECK",GC_TEXT);
+    }
+    cv_blit(0,136);
+}
 static void gu_redraw_all(void)
 {
     uint32_t k;
@@ -1542,6 +2606,7 @@ static void gu_draw(void)
     uint32_t k;
     if (!gu.ready)
         return;
+    if(ab20_menu_mode){ab20_render_menu();return;}
     /* Preset load can switch synth while we are on a now-hidden page. */
     if (!gu_page_visible(gu.page)) {
         gu.page = 0u;
@@ -1602,6 +2667,26 @@ static void gu_draw(void)
 /* ---------------------------------------------------------------- LEDs --- */
 static uint32_t gu_group_btn(void) { return GU_PAGES[gu.page].btn; }
 
+/* M1 note LEDs: one mask per MIDI channel, no extra playback path.
+ * Notes outside the 27 physical keys (F3..G5, MIDI 53..79) are ignored. */
+static uint32_t ab_m_led_notes[16];
+static void ab_m_led_note_event(uint32_t op,uint32_t ch,uint32_t note,uint32_t vel){
+    uint32_t bit;
+    if(ch>=16u)return;
+    if(op==0xB0u && (note==120u || note==123u)){
+        ab_m_led_notes[ch]=0u;return;
+    }
+    if(note<53u || note>79u)return;
+    bit=1u<<(note-53u);
+    if(op==0x90u && vel!=0u) ab_m_led_notes[ch]|=bit;
+    else if(op==0x80u || (op==0x90u && vel==0u))ab_m_led_notes[ch]&=~bit;
+}
+static uint32_t ab_m_led_key_on(uint32_t key){
+    uint32_t ch,bit=1u<<key;
+    for(ch=0u;ch<16u;ch++)if(ab_m_led_notes[ch]&bit)return 1u;
+    return 0u;
+}
+
 static void gu_leds(void)
 {
     uint8_t nl[FM1_NCOL] = {0}, nd[FM1_NCOL] = {0};
@@ -1635,6 +2720,8 @@ static void gu_leds(void)
             for(j=0u;j<t->seq_n;j++) if((int32_t)t->seq_notes[j]==pitch) {lit=1u;break;}
             if(t->arp_note && (int32_t)t->arp_note==pitch) lit=1u;
         }
+        /* M1 streams MIDI rather than updating seq_notes[]. Show its real Note-On/Offs. */
+        if(ab_m_playing && ab_m_led_key_on(k))lit=1u;
         led_put(nl, 14u + k, (int)lit);
     }
     if (GU_PAGES[gu.page].k[1].id == GV_STEP) {           /* SEQ STEPS: the first 8 keys show the steps */
@@ -1658,11 +2745,18 @@ static void gu_go(uint32_t page)
 {
     page %= GU_NPAGE;
     gu.page = (uint8_t)(gu_page_visible(page) ? page : 0u);
+    if (GU_PAGES[gu.page].k[0].id==GV_AB17_PAT)
+        ab17_init(&ab17_ui_delete,ab15_cache.pattern_id);
+    else ab17_cancel(&ab17_ui_delete);
     ab5_live_next_keys = (uint8_t)(GU_PAGES[gu.page].k[0].id==GV_V5_SELECT);
     if (GU_PAGES[gu.page].btn != B_REC) gu.v5_rec_active=0u;
     if (GU_PAGES[gu.page].btn == B_SEQ) {
         uint8_t first = GU_PAGES[gu.page].k[0].id;
         gu.dz_seq_mode = 0u;
+        if(ab18_disk_owned && first==GV_V5_SONG && !ab_md.song_loaded)
+            (void)ab_md_song_select(ab_md.song_id?ab_md.song_id:1u,1);
+        if(ab18_disk_owned && first==GV_V5_ALBUM && !ab_md.album_loaded)
+            (void)ab_md_album_select(ab_md.album_id?ab_md.album_id:1u,1);
         /* PLAY/SONG EDIT/ALBUM SETUP all use v5 transport; ARP does not. */
         if (first == GV_V5_SELECT || first == GV_V5_SONG || first == GV_V5_ALBUM)
             ab5_transport_armed = 1u;
@@ -1815,8 +2909,141 @@ static void gu_turn(uint32_t k, int32_t s)
 {
     const gu_par_t *q = gu_pk(&GU_PAGES[gu.page], k);
     int32_t lo, hi;
+    /* PLAY: direct MUSIC DISK pattern selection, no old bank selector. */
+    if(ab18_disk_owned && ab_md.mode==AB5_MODE_PATTERN && GU_PAGES[gu.page].btn==B_SEQ &&
+       GU_PAGES[gu.page].k[0].id==GV_AB17_PAT && k==0u && s){
+        int rc=(song.playing&&ab15_cache.active)?ab_md_queue_pattern(s):ab18_nav(s);
+        if(rc==AB16_ENOTFOUND)gu_say("DISK EMPTY",0);
+        else if(rc==AB16_ESTATE && ab15_cache.dirty)gu_say("SAVE FIRST",0);
+        else if(rc)gu_say("STOP FIRST",0);
+        ui.force=1u;return;
+    }
+    if(ab_fix_rec_page() && GU_PAGES[gu.page].k[1].id!=GV_AB17_STEP && s){
+        int32_t v,lo,hi;
+        if(q->id==GV_AB17_PAT && k==0u){
+            int rc;
+            gu_range(q,&lo,&hi);v=clamp(gu_get(q)+gu_accel(s,hi-lo),lo,hi);
+            rc=ab_fix_rec_pattern((uint16_t)v);
+            if(rc)gu_say(ab15_cache.dirty?"SAVE FIRST":"PAT LOAD FAIL",0);
+            ui.force=1u;return;
+        }
+        if(q->id==GV_AB17_STEP){
+            gu_range(q,&lo,&hi);
+            v=clamp((int32_t)ab17_ui_delete.step+s,lo,hi);
+            ab17_ui_delete.step=(uint8_t)v;
+            ui.force=1u;return;
+        }
+        if(q->id==GV_AB17_LEN){
+            int rc;
+            gu_range(q,&lo,&hi);
+            v=clamp(gu_get(q)+s,lo,hi);
+            rc=ab15_set_length(&ab15_cache,(uint8_t)v);
+            if(rc)gu_say("LENGTH FAILED",0);
+            ui.force=1u;return;
+        }
+    }
+    /* Dedicated REC/MUSIC page: K2 is STEP, K4 is DELETE confirmation.
+     * K4 turns are raw panel detents (NEVER gu_accel). All other knobs
+     * are read-only on this page. Flash delete stays disabled in dev17. */
+    if (GU_PAGES[gu.page].btn==B_REC &&
+        GU_PAGES[gu.page].k[1].id==GV_AB17_STEP) {
+        int ev=AB17_NONE;
+        if (!s) return;
+        if (song.playing || transport_busy() || gu.save ||
+            gu.dz_edit_active || ab15_cache.active) {
+            ab17_cancel(&ab17_ui_delete);
+            gu_say("STOP FIRST",0);return;
+        }
+        if(k==0u && !ab17_ui_delete.pending) {
+            int32_t lo,hi,v;int rc;
+            gu_range(q,&lo,&hi);
+            v=clamp((int32_t)ab15_cache.pattern_id+gu_accel(s,hi-lo),lo,hi);
+            rc=ab_fix_rec_pattern((uint16_t)v);
+            if(rc&&ab15_cache.dirty)gu_say("SAVE PAT",0);
+            else if(rc)gu_say("PAT LOAD FAIL",0);
+        }
+        if(k==1u) ev=ab17_k2(&ab17_ui_delete,s,ab15_cache.pattern.length);
+        else if(k==2u){
+            int32_t len=clamp((int32_t)ab15_cache.pattern.length+s,8,128);
+            if(ab15_set_length(&ab15_cache,(uint8_t)len))gu_say("LENGTH FAILED",0);
+        }
+        else if (k==3u) ev=ab17_k4(&ab17_ui_delete,s,ab15_cache.pattern_id);
+        else if (ab17_ui_delete.pending) {
+            ab17_cancel(&ab17_ui_delete);ev=AB17_CANCEL;
+        }
+        if (ev==AB17_PROMPT) gu_say("DELETE?", "K4 LEFT x5");
+        else if(ev==AB17_PROGRESS) {
+            char count[12];fmt_int(count,(int32_t)ab17_ui_delete.progress);
+            gu_say("DELETE K4",count);
+        } else if(ev==AB17_CONFIRMED)
+            {
+                int rc=ab18_delete_current();
+                if(rc==AB16_ENOTFOUND)gu_say("EMPTY",0);
+                else if(rc==AB16_EFOREIGN||rc==AB16_ENOFS)
+                    gu_say("DISK NOT READY",0);
+                else if(rc)gu_say("DELETE FAILED",0);
+                else gu_say("PAT DELETED",0);
+            }
+        else if(ev==AB17_CANCEL) gu_say("CANCELLED",0);
+        ui.force=1u;
+        return;
+    }
     if (q->id == GV_NONE || !s)
         return;
+    /* MUSIC DISK PLAY: only scroll actual populated S/M/A IDs, never holes.
+     * Editors intentionally keep their empty IDs to create new objects. */
+    if(ab18_disk_owned && GU_PAGES[gu.page].k[0].id==GV_AB17_PAT &&
+       k==0u && ab_md.mode!=AB5_MODE_PATTERN){
+        uint32_t id,i,n;int dir=s>0?1:-1,rc=0;
+        uint16_t ref=ab_md_play_song_ref;
+        id=(uint32_t)gu_get(q);
+        n=(uint32_t)(s>0?s:-(int64_t)s);if(n>8u)n=8u;
+        for(i=0u;i<n;i++){
+            if(ab_md.mode==AB5_MODE_SONG){
+                rc=ab_md_ref_browse(ref,dir,&ref);
+                id=ab_md_ref_to_ui(ref);
+            }else rc=ab18_fast_next(AB16_ALBUM,id,dir,&id);
+            if(rc)break;
+        }
+        if(!rc)gu_set(q,(int32_t)id);
+        else gu_say("NO SAVED SONG",0);
+        ui.force=1u;return;
+    }
+    /* ALBUM EDIT K4: browse existing S1-32 and M1-1..128, not empty IDs. */
+    if(ab18_disk_owned && q->id==GV_V5_ALBUM_SONG && ab_md.album_loaded &&
+       ab_md.album_slot<ab_md.album.count && ab_md_album_kind()==0){
+        uint16_t ref=ab_md.album.song_id[ab_md.album_slot];
+        uint32_t i,n=(uint32_t)(s>0?s:-(int64_t)s);
+        int dir=s>0?1:-1,rc=0;
+        if(n>8u)n=8u;
+        for(i=0;i<n;i++){
+            rc=ab_md_ref_browse(ref,dir,&ref);
+            if(rc)break;
+        }
+        if(!rc){ab_md.album.song_id[ab_md.album_slot]=ref;ab_md.album_dirty=1u;}
+        else gu_say("NO SAVED SONG",0);
+        ui.force=1u;return;
+    }
+    /* SONG K4 browses actual, CRC-verified MUSIC DISK patterns, not numeric
+     * holes. The old editor could save an absent Pxxx then fail at PLAY. */
+    if(ab18_disk_owned && q->id==GV_V5_VALUE && ab_md.song_loaded &&
+       GU_PAGES[gu.page].k[0].id==GV_V5_SONG &&
+       ab_md_row()->op==AB13_OP_PATTERN){
+        uint32_t id=ab_md_row()->pattern_id,i,n;int rc=0,dir=s>0?1:-1;
+        n=(uint32_t)(s>0?s:-(int64_t)s);if(n>8u)n=8u;
+        for(i=0u;i<n;i++){
+            rc=ab18_fast_next(AB16_PAT,id,dir,&id);
+            if(rc)break;
+        }
+        if(!rc){
+            int length=ab_md_pattern_length((uint16_t)id);
+            if(length){ab_md_row()->pattern_id=(uint16_t)id;
+                       ab_md_row()->steps=(uint16_t)length;ab_md.song_dirty=1u;}
+            else rc=AB16_ENOTFOUND;
+        }
+        if(rc)gu_say("PAT MISSING",0);
+        ui.force=1u;return;
+    }
     gu_range(q, &lo, &hi);
     gu_set(q, gu_get(q) + gu_accel(s, hi - lo));
     gu.hot = (int8_t)k;
@@ -1860,6 +3087,52 @@ static void gu_letter(int32_t s)
         gu.sname[len - 1u] = 0;                      /* (no trailing spaces) */
 }
 
+static int ab20_hidden_input(uint32_t pressed){
+    uint32_t glo_bit=1u<<panel.btn[B_GLO];
+    uint32_t home_bit=1u<<panel.btn[B_HOME];
+    int32_t click;
+    if((fm1_in.buttons&glo_bit)!=0u){
+        if(!ab20_glo_tracking){ab20_glo_tracking=1u;ab20_glo_start=fm1_ms;}
+        if(!ab20_glo_latched && !ab20_menu_mode &&
+           (uint32_t)(fm1_ms-ab20_glo_start)>=5000u &&
+           !song.playing && !transport_busy() && !gu.save &&
+           !gu.dz_edit_active && !ab15_cache.active && !ui.uboot){
+            ab20_menu_mode=1u;ab20_k4_count=0u;
+            ab20_glo_latched=1u;ui.force=1u;
+        }
+    }else{
+        ab20_glo_tracking=0u;
+        ab20_glo_latched=0u;
+    }
+    if(!ab20_menu_mode)return 0;
+    /* Drain all encoders so neither synth nor editor changes in maintenance. */
+    (void)panel_enc(EN_PRESET);
+    (void)panel_enc(EN_SELECT);
+    (void)panel_enc(EN_ALGO);
+    (void)panel_enc(EN_K1);
+    (void)panel_enc(EN_K2);
+    (void)panel_enc(EN_K3);
+    click=panel_enc(EN_K4);
+    if(pressed&home_bit){
+        ab20_menu_mode=0u;ab20_k4_count=0u;ui.force=1u;
+        return 1;
+    }
+    if(ab20_menu_mode==1u){
+        if(click>0){ab20_menu_mode=0u;ab20_k4_count=0u;ui.force=1u;return 1;}
+        if(click<0){
+            uint32_t add=(uint32_t)(-(int64_t)click);
+            if(add>5u)add=5u;
+            if((uint32_t)ab20_k4_count+add>=5u){
+                ab20_k4_count=5u;ui.force=1u;
+                ab20_render_menu();
+                ab20_menu_result=ab20_clear_for_other_firmware();
+                ab20_menu_mode=ab20_menu_result?3u:2u;
+            }else ab20_k4_count=(uint8_t)(ab20_k4_count+add);
+            ui.force=1u;
+        }
+    }
+    return 1;
+}
 static void gu_input(void)
 {
     uint32_t pressed = fm1_input_edges(0), id, b, k, notes;
@@ -1867,14 +3140,10 @@ static void gu_input(void)
     notes = fm1_input_note_edges();                  /* (the keys sound from the audio ISR: seq.c) */
     if (!gu.ready)
         return;
+    ab_md_service(); /* SONG/ALBUM flash prefetch: never from the audio ISR. */
+    if(ab20_hidden_input(pressed))return;
     gx_poll();
-    ab5_store_poll();
-    {
-        uint8_t was_error = dz_store_error;
-        dz_store_poll(&dz_model, !gu.dz_edit_active && !gu.save);
-        if (!was_error && dz_store_error)
-            gu_say("SAVE FAILED", 0);
-    }
+    /* The V5/DZ NOR autosavers are retired. MD16 handles all persistence. */
     for (k = 0; k < NTRK; k++)                       /* MIDI Program Change: a program */
         if (ui.mpc[k]) {
             uint32_t v;
@@ -1940,7 +3209,11 @@ static void gu_input(void)
             gu.save_slot = (uint8_t)(((int32_t)gu.save_slot + s % (int32_t)GL_NPROG + (int32_t)GL_NPROG) %
                                      (int32_t)GL_NPROG);
         } else {
-            gu_load((uint32_t)(((int32_t)gu.prog + s % (int32_t)GL_NPROG + (int32_t)GL_NPROG) % (int32_t)GL_NPROG));
+            uint32_t next = (uint32_t)(((int32_t)gu_browser +
+                           s % (int32_t)GU_BROWSER_TOTAL + (int32_t)GU_BROWSER_TOTAL) %
+                           (int32_t)GU_BROWSER_TOTAL);
+            if (next < GL_NPROG) gu_load(next);
+            else gu_load_factory(next - GL_NPROG);
         }
     }
     if (gu.save) {
@@ -1980,6 +3253,7 @@ static void gu_input(void)
                 rc = gu_store(gu.save_slot, gu.sname);
                 if (!rc) {
                     gu.prog = gu.save_slot;
+                    gu_browser = gu.save_slot;
                     str_cpy(gu.name, gu.sname, 13);
                     gu.dirty = 0;
                     gu_say("WRITTEN", 0);
@@ -1998,6 +3272,13 @@ static void gu_input(void)
          * It never edits a synth preset's legacy sequence, irrespective of
          * the current UI page or which sound/preset is selected. */
         case B_REC:
+            if(ab18_disk_owned){
+                if(song.playing || transport_busy() || gu.save || ab15_cache.active){
+                    gu_say("STOP FIRST",0);break;
+                }
+                gu_button(B_REC); /* MUSIC PAT -> STEP -> TIME -> PATT */
+                break;
+            }
             if (!gu.dz_edit_active) {
                 if (song.playing || transport_busy() || dz_play_has_backup) {
                     gu_say("STOP FIRST", 0);
@@ -2033,11 +3314,66 @@ static void gu_input(void)
             break;
         }
         case B_PLAY:                                     /* the sequencer: play / stop */
+            if(ab18_disk_owned && ab_md.mode==AB5_MODE_ALBUM){
+                if(ab_md_playlist_active){
+                    ab_md_playlist_active=0u;ab_md_playlist_started=0u;
+                    ab_md_playlist_preset_active=0u;
+                    if(ab_m_playing)ab_m_stop();
+                    if(song.playing || seq_counting())transport_req=2u;
+                    gu_say("ALBUM STOP",0);
+                    break;
+                }
+                if(song.playing || seq_counting() || ab_m_playing || transport_busy() ||
+                   ab15_cache.dirty || ab_md.song_dirty || ab_md.album_dirty){
+                    gu_say("STOP / SAVE FIRST",0);break;
+                }
+                {int rc=ab_md_album_select(ab_md.album_id?ab_md.album_id:1u,0);
+                 if(!rc && !ab_md.album.count)rc=AB16_ENOTFOUND;
+                 if(rc){gu_say(rc==AB16_ENOTFOUND?"ALBUM EMPTY":"ALBUM LOAD ERROR",0);break;}
+                 ab_md_playlist_active=1u;ab_md_playlist_slot=0u;ab_md_playlist_started=0u;
+                 ab_md_playlist_preset_active=0u;
+                 rc=ab_md_playlist_start();
+                 if(rc){ab_md_playlist_active=0u;
+                     gu_say(rc==AB16_ENOTFOUND?"SONG MISSING":"ALBUM PLAY FAILED",0);
+                 }else gu_say("ALBUM PLAY",0);
+                }
+                break;
+            }
+            if(ab18_disk_owned && ab_md.mode==AB5_MODE_SONG && (ab_md_play_song_ref&AB_MD_REF_M)){
+                if(ab_m_playing){ab_m_stop();gu_say("M STOP",0);}
+                else if(song.playing || seq_counting() || transport_busy() || ab15_cache.dirty || ab_md.song_dirty){
+                    gu_say("STOP / SAVE FIRST",0);
+                }else {int mrc=ab_m_start((uint16_t)(ab_md_play_song_ref&AB_MD_REF_ID));
+                    if(!mrc)ab_m_repeat(ab_md_m_loop);
+                    gu_say(mrc?(mrc==AB16_ENOTFOUND?"M EMPTY":"M LOAD ERROR"):"SONG PLAY",0);}
+                break;
+            }
+            if(ab17_ui_delete.pending){
+                ab17_cancel(&ab17_ui_delete);gu_say("CANCELLED",0);break;
+            }
             if (gu.dz_edit_active) {
                 gu_say("EXIT REC", 0);  /* Stage 3: playback not wired to RAM patterns */
                 break;
             }
-            if (!song.playing && !seq_counting() && ab5_transport_armed) {
+            if(!song.playing && !seq_counting() && ab18_disk_owned){
+                int rc=0;
+                if(ab15_cache.dirty){gu_say("SAVE PAT",0);break;}
+                if(ab_md.mode==AB5_MODE_SONG && ab_md.song_dirty){gu_say("SAVE SONG",0);break;}
+                if(ab_md.mode==AB5_MODE_ALBUM && (ab_md.album_dirty||ab_md.song_dirty)){
+                    gu_say(ab_md.album_dirty?"SAVE ALBUM":"SAVE SONG",0);break;
+                }
+                if(ab_md.mode==AB5_MODE_PATTERN){
+                    if(!ab15_cache.loaded){gu_say("DISK EMPTY",0);break;}
+                    ab_md.play_active=0u;ab15_cache.armed=1u;ab15_cache.loop=ab5_pattern_loop;
+                }else{
+                    rc=ab_md_prepare_start();
+                    if(rc==AB16_ENOTFOUND){gu_say(ab_md.mode==AB5_MODE_SONG?"SONG EMPTY":"ALBUM EMPTY",0);break;}
+                    if(rc){gu_say("PLAY PREP FAIL",0);break;}
+                }
+                ab5_prepared_valid=0u;
+                ab5_transport_armed=0u;
+            }
+            if (!song.playing && !seq_counting() && !ab18_disk_owned && ab5_transport_armed) {
                 /* Strictly read-only start check; no flash access. The large
                  * validation runs HERE on the UI thread, never in the ISR. */
                 if (ab5_boot_status != AB5_BOOT_V5_VALID &&
@@ -2062,7 +3398,7 @@ static void gu_input(void)
             if ((fm1_in.buttons & ((1u << panel.btn[B_OCTDN]) | (1u << panel.btn[B_OCTUP]))) ==
                 ((1u << panel.btn[B_OCTDN]) | (1u << panel.btn[B_OCTUP])))
                 break;                               /* (both: the UPDATE MODE gesture, main.c) */
-            if (ab5_play_active && dz_play_has_backup && song.playing) {
+            if ((ab5_play_active || ab_md.play_active) && dz_play_has_backup && song.playing) {
                 int32_t tr=ab5_live_transpose+(b==B_OCTDN?-1:1);
                 ab5_live_transpose=(int8_t)clamp(tr,-12,12);
                 {
@@ -2084,6 +3420,23 @@ static void gu_input(void)
             }
             break;
         case B_SAVE:
+            if(ab18_disk_owned && GU_PAGES[gu.page].k[0].id==GV_V5_SONG){
+                int rc=ab_md_save_song();
+                gu_say(rc==AB16_ENOTFOUND?"SONG/PAT EMPTY":
+                       rc==AB16_EINVAL?"SONG BAD PAT":
+                       rc?"SONG SAVE FAILED":"SONG SAVED",0);
+                break;
+            }
+            if(ab18_disk_owned && GU_PAGES[gu.page].k[0].id==GV_V5_ALBUM){
+                int rc=ab_md_save_album();
+                gu_say(rc?"ALBUM SAVE FAILED":"ALBUM SAVED",0);
+                break;
+            }
+            if(ab18_disk_owned && GU_PAGES[gu.page].btn==B_REC){
+                int rc=ab18_save_current();
+                gu_say(rc?"PAT SAVE FAILED":"PAT SAVED",0);
+                break;
+            }
             if (gu.dz_edit_active) {
                 gu_say("EXIT REC", 0);  /* leave REC to queue flash autosave */
                 break;
@@ -2108,29 +3461,41 @@ static void gu_boot(void)
     gu.hot = -1;
     gu.shown_uboot = 0xFF;
     gu_prefs_load();
+    /* Web-OTA only writes 0x4000..0x92FFF. Factory data is in app ROM.
+     * On first boot, claim old sample/preset sectors and seed 128 patterns.
+     * Valid MD16 volumes (even empty ones) are NEVER re-seeded. */
+    (void)ab20_first_boot();
+    /* No legacy sample-slot probes. 0xA0000+ belongs to the MUSIC DISK. */
     dz_seq_model_init(&dz_model);
-    dz_store_boot(&dz_model);
-    /* V5 preview loads an existing valid AB5S or imports v4 Song 01 in RAM.
-     * No erase, program, automatic v5 autosave or v5 transport activation. */
-    ab5_boot_status = (uint8_t)ab5_boot_preview(&ab5_model, &ab5_state,
-                                            &dz_model, flash_ok ? &dz_ab_io : 0);
-    /* ab5_nor_save itself refuses FOREIGN; this gate also refuses 1st
-     * auto-claim if either third-slot partition is not entirely empty. */
-    ab5_store_enabled=(uint8_t)(flash_ok &&
-        (ab5_boot_status==AB5_BOOT_V4_PREVIEW || ab5_boot_status==AB5_BOOT_V5_VALID) &&
-        (ab5_state.valid ||
-          (ab5_state.copy_kind[0]==AB5_NOR_COPY_EMPTY &&
-           ab5_state.copy_kind[1]==AB5_NOR_COPY_EMPTY)) &&
-        ab5_state.copy_kind[0]!=AB5_NOR_COPY_FOREIGN &&
-        ab5_state.copy_kind[1]!=AB5_NOR_COPY_FOREIGN);
+    /* Retire the legacy PDZ6/v4/v5 boot importer and ALL its write paths.
+     * No old copy is erased or converted here. On an invalid MD16 volume the
+     * firmware stays read-only; recovery is through an external backup. */
+    ab5_boot_status=0u;
+    ab5_store_enabled=0u;
+    dz_store_enabled=0u;
     ab5_dirty=ab5_store_error=0u;
     ab5_edited_ms=ab5_last_try_ms=0u;
     gu.dz_seq_mode = 0;
     ab5_transport_armed = ab5_prepared_valid = ab5_play_active = 0u;
     ab5_live_transpose=0; ab5_song_transpose=0; ab5_song_octave=0;
     ab5_live_next_keys=0; ab5_switch_request=0u; ab5_album_play_slot=0u;
+    ab_petz_restore_on_boot(); /* two original programs, no NOR writes */
     gu_load(0);
+    ab17_init(&ab17_ui_delete,0u);
+    /* Build one compact direct-ID index at boot. This replaces the old
+     * full-volume scan on every encoder detent. */
+    if(ab18_disk_owned){
+        ab5_store_enabled=0u;dz_store_enabled=0u;ab_md_init();
+        (void)ab18_index_refresh();
+    }
     gu.ready = 1;
+    /* The first actual pattern is directly playable; no USB console needed. */
+    if(ab18_disk_owned && !ab20_boot_rc){
+        uint32_t first;
+        if(!ab18_fast_first(AB16_PAT,&first) && first<=AB16_PATTERN_ID_MAX)
+            (void)ab18_load_disk((uint16_t)first);
+    }
+    if(ab20_boot_rc)gu_say("DISK ERROR",0);
     if (dz_store_import_pending)
         gu_say("IMPORT RAM ONLY", 0);
 }

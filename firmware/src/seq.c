@@ -1449,15 +1449,18 @@ static int32_t click_beat_now(void)
 /* everything that happens between two rendered blocks */
 static void events_block(uint32_t n)
 {
+    static uint8_t tempo_pause_previous; /* transport pause, not STOP */
+    static uint8_t tempo_zero_previous; /* shared ARP clock stop */
     uint32_t i, pr, seq_n = n;
     uint32_t clock_mode = (uint32_t)song.g[G_CLOCK];
+    uint8_t tempo_zero, pause_seq;
     if (midi_clock.mode != clock_mode) {
         seq_stop();
         memset(&midi_clock, 0, sizeof midi_clock);
         midi_clock.mode = (uint8_t)clock_mode;
         midi_beat_samples = 0;
     }
-    if (cin_left && !clock_mode)
+    if (cin_left && !clock_mode && song.g[G_BPM]>0)
         cin_block(n);
     if (transport_req == 1u) {
         if (clock_mode)
@@ -1532,6 +1535,9 @@ static void events_block(uint32_t n)
         uint32_t d1 = (pkt >> 16) & 0x7Fu, d2 = (pkt >> 24) & 0x7Fu;
         uint32_t source = midi_in_source[at] ? midi_in_source[at] : 1u, ms = midi_in_ms[at];
         mi_r++;
+#if GOLANA
+        ab_router_audio_input(pkt, source);
+#endif
         if (status >= 0xF8u) {
             if (clock_mode == source) {
                 if (status == 0xF8u)
@@ -1555,21 +1561,39 @@ static void events_block(uint32_t n)
     }
     if (aud_req)
         seq_audition();                               /* (STEP PREVIEW: a step sounds, stopped) */
-    chain_tick(seq_n);
-    for (i = 0; i < NTRK; i++)
-        seq_tick(&trk[i], seq_n);
-    if (cin_flush)
+    /* BPM 0 freezes the transport at its exact step/SONG/ALBUM position.
+     * Do not advance note gates, chain, ARP, click or beat phase while paused.
+     * MIDI input and audio continue normally; no STOP or flash I/O. */
+    tempo_zero=(uint8_t)(song.g[G_BPM]<=0);
+    pause_seq=(uint8_t)(tempo_zero && song.playing);
+    if(pause_seq && !tempo_pause_previous){
+        for(i=0;i<NTRK;i++)seq_release(&trk[i]); /* one-off Note Off */
+    }
+    tempo_pause_previous=pause_seq;
+    if(pause_seq && clock_mode) midi_clock.rendered=midi_clock.pos;
+    if(!pause_seq){
+        chain_tick(seq_n);
+        for (i = 0; i < NTRK; i++)seq_tick(&trk[i], seq_n);
+    }
+    if (cin_flush && !pause_seq)
         cin_record();
-    if (song.playing)
+    if (song.playing && !pause_seq)
         click_tick(seq_n);
-    for (i = 0; i < NPART; i++)
-        arp_step(&trk[i], clock_mode ? seq_n : n, clock_mode && song.playing ? seq_n : n);
-    beat_pos += clock_mode ? seq_n : n;               /* the beat the ARP LED flashes on (ui_leds) */
-    if (beat_pos >= beat_samples()) {
+    /* The ARP also has a free-running clock: at global BPM 0 it must not
+     * retrigger on a zero advance or leave a held note sounding forever. */
+    if(tempo_zero && !tempo_zero_previous)
+        for(i=0;i<NPART;i++)if(trk[i].arp_note)arp_silence(&trk[i]);
+    tempo_zero_previous=tempo_zero;
+    if(!tempo_zero)
+        for (i = 0; i < NPART; i++)
+            arp_step(&trk[i], clock_mode ? seq_n : n,
+                     clock_mode && song.playing ? seq_n : n);
+    beat_pos += tempo_zero ? 0u : (clock_mode ? seq_n : n);               /* the beat the ARP LED flashes on (ui_leds) */
+    if (!tempo_zero && beat_pos >= beat_samples()) {
         beat_pos -= beat_samples();
         beat_pos = beat_pos < beat_samples() ? beat_pos : 0u;
         beat_n = (beat_n + 1u) & 3u;
     }
-    if (song.playing)
+    if (song.playing && !pause_seq)
         song.tick++;
 }

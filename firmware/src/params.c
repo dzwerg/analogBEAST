@@ -47,7 +47,7 @@ static const char *const N_CHRD[] = {"OFF", "DIA3", "DIA7", "MAJ", "MIN", "DOM7"
 static const char *const N_VOIC[] = {"CLOSE", "OPEN", "INV1", "INV2", "+OCT"};   /* VC_CLOSE .. VC_BASS */
 static const char *const N_VOICE[] = {"POLY", "MONO", "LEG", "UNI"};   /* V_POLY .. V_UNISON */
 static const char *const N_GLSPMODE[] = {"LP", "BP", "HP"};
-static const char *const N_GLSYNTH[] = {"MIKROKORG", "BRUTE"};
+static const char *const N_GLSYNTH[] = {"KORG", "BRUTE"};
 static const char *const N_GLMODE[] = {"RATE", "TIME"};
 static const char *const N_PRIO[] = {"LAST", "LOW", "HIGH"};
 static const char *const N_ALLOC[] = {"ROT", "REUSE"};
@@ -202,7 +202,7 @@ static const param_desc_t *ins_desc(int32_t type, uint32_t k)
 }
 
 static const param_desc_t GP[G_COUNT] = {
-    [G_BPM] = PD("BPM", F_BPM, 40, 240, 120),
+    [G_BPM] = PD("BPM", F_BPM, 0, 240, 120),
     [G_SWING] = PD("SWG", F_PCT, 0, 100, 0),
     [G_CLOCK] = PE("CLK", N_CLOCK, 0),
     [G_TUNE] = PD("TUNE", F_INT, -50, 50, 0),     /* cents; edited on MENU > AUDIO TUNE (1.2: menu_items.c MI_TUNE) */

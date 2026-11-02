@@ -33,8 +33,16 @@
  * State: per voice an fm6_note_t (in the part's engine memory as PHYS's slots, engines.c eng_mem; fm6_note_of:
  * voice_t.s[] is too small), per part the patch, the patch through the macros (fm6_eff, rebuilt in the audio ISR when either
  * changes) and the LFO (once a block). */
+#if GOLANA
+#include "fm6_legacy_core.c" /* ABI and record codec only */
+#else
 #include "fm6_core.c"
-#include "felucca_fm6.h"         /* tools/gen_fm6_patches.py: FM6_INIT, FM6_FACTORY[] */
+#endif
+#if GOLANA
+#include "fm6_legacy_patches.h"
+#else
+#include "felucca_fm6.h"
+#endif         /* tools/gen_fm6_patches.py: FM6_INIT, FM6_FACTORY[] */
 
 #define ENGI_FM6 12u             /* engines.c ENGINES[] (append-only) */
 #define FM6_POLY 6               /* engine_t.poly */
@@ -47,6 +55,7 @@ static volatile uint8_t fm6_pgen[NTRK];          /* +1 after each write of fm6_p
 static uint8_t fm6_slot[NTRK];                   /* the SLOT value last loaded (main loop); 0xFF = none */
 static uint8_t fm6_own[NTRK][FM6_PACKED] __attribute__((section(".pool")));   /* the own patch while SLOT shows a factory one (fm6_poll) */
 static uint8_t fm6_own_ok;                       /* bit tr: fm6_own[tr] holds it */
+#if !GOLANA /* old FM6 audio state, not analogBEAST */
 static struct {                                  /* the patch through the macros: the audio ISR's copy */
     uint8_t p[FP_SIZE + 1u];
     uint8_t gen, alg, fb, ok;
@@ -55,7 +64,8 @@ static struct {                                  /* the patch through the macros
 } fm6_eff[NTRK];
 static fm6_lfo_t fm6_lfo[NTRK];
 static int32_t fm6_lfo_v[NTRK], fm6_lfo_d[NTRK]; /* this block's LFO value and delay (Q24) */
-ENG_MEM_FITS("FM6", sizeof(fm6_note_t) * FM6_POLY);
+#endif /* !GOLANA audio state */
+/* obsolete engine never selected in GOLANA build */
 /* the voice bank (fm6_vbank.c; in the pool, zeroed at boot: no bank without the store) */
 static uint32_t fm6_bank_used __attribute__((section(".pool")));   /* bit k: B k+1 holds a voice */
 static int (*fm6_bank_read)(uint32_t k, uint8_t *pk) __attribute__((section(".pool")));   /* voice k -> pk, 0 = read */
@@ -273,6 +283,7 @@ static void fm6_poll(void)
     }
 }
 
+#if !GOLANA /* FM6 synthesis unavailable in analogBEAST */
 /* -------------------------------------------------------------- macros --- */
 /* the patch through E0..E6 (audio ISR; cheap when nothing changed) */
 static void fm6_sync(const track_t *t)
@@ -395,6 +406,7 @@ static void fm6_render(track_t *t, voice_t *v, int32_t *out, uint32_t len, const
     }
 }
 
+#endif /* !GOLANA FM6 DSP */
 /* --------------------------------------------------------- the engine --- */
 static const char *const N_FM6_ALG[] = {"PAT", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13",
                                         "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25",
@@ -406,6 +418,7 @@ static const char *const N_FM6_PATCH[] = {"F1", "F2", "F3", "F4", "F5", "F6", "F
 _Static_assert(NELEM(N_FM6_PATCH) == FM6_OWN + FM6_NBANK + 2u, "a SLOT name per value");
 
 /* {ALG, FB, MLVL, MRAT, MEG, VMOD, DTUN, SLOT}: the factory patch F1..F8 as it is, DTUN on the pad */
+#if !GOLANA
 static const preset_t FM6_PRESETS[] = {
     {"TINE EP", {0, 0, 0, 0, 0, 0, 0, 0}, {0, 0, 127, 0}, 0, 0, FX(0, 45, 25, 35), PAT(6)},
     {"BELL", {0, 0, 0, 0, 0, 0, 0, 1}, {0, 0, 127, 0}, 0, 0, FX(0, 10, 30, 70), PAT(7)},
@@ -441,3 +454,5 @@ static const engine_t ENG_FM6 = {
     .done = fm6_done,
     .mem = sizeof(fm6_note_t) * FM6_POLY,
 };
+
+#endif /* !GOLANA legacy FM6 engine */

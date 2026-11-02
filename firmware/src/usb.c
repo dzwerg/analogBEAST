@@ -23,6 +23,13 @@
  * at 44.1 kHz; at 48 kHz uac_tap resamples (polyphase FIR 160 / 147, uac_fir.h) into the ring. 44.1 kHz,
  * the rate until a host asks for another, sends the samples as before, bit for bit. */
 #include "../hal/fm1_usb.h"   /* registers; relative, so the loader and the host tests find it too */
+#ifndef FELUCCA_USB_HOST
+#define FELUCCA_USB_HOST 0
+#endif
+#ifdef FELUCCA_LOADER
+#undef FELUCCA_USB_HOST
+#define FELUCCA_USB_HOST 0
+#endif
 #ifndef FELUCCA_CDC
 #define FELUCCA_CDC 0
 #endif
@@ -172,6 +179,40 @@ static uint32_t midi_in_ms[MQ];
 static uint8_t midi_in_source[MQ];                    /* 1 USB, 2 TRS */
 static volatile uint32_t fm1_ms;                    /* also declared by core.h; parser-only host tests */
 static volatile uint32_t mi_w, mi_r, mo_w, mo_r;
+/* AB_USB4_MODE: app-only, RAM-only; boot always AUDIO + MIDI. */
+#if GOLANA && !defined(FELUCCA_LOADER)
+enum { AB_USB4_COMBINED = 0, AB_USB4_MIDI_DEVICE = 1,
+       AB_USB4_AUDIO_DEVICE = 2, AB_USB4_MIDI_HOST = 3 };
+static volatile uint8_t ab_usb4_mode;  /* zero-initialized; never stored in MUSIC DISK */
+/* AB_USB5_DETACH_GAP: bus needs time to observe a true detach before reenumeration. */
+static volatile uint8_t ab_usb5_delay_armed;
+static uint32_t ab_usb5_resume_ms;
+/* AB_USB5_ENDPOINT_ROLE_GUARDS: HOST never presents USB-device endpoints. */
+#define AB_USB4_MIDI_ALLOWED (ab_usb4_mode == AB_USB4_COMBINED || ab_usb4_mode == AB_USB4_MIDI_DEVICE)
+#define AB_USB4_AUDIO_ALLOWED (ab_usb4_mode == AB_USB4_COMBINED || ab_usb4_mode == AB_USB4_AUDIO_DEVICE)
+#define AB_USB4_AS_IF (ab_usb4_mode == AB_USB4_AUDIO_DEVICE ? 1u : 2u)
+#else
+#define AB_USB4_MIDI_ALLOWED 1
+#define AB_USB4_AUDIO_ALLOWED 1
+#define AB_USB4_AS_IF 2u
+#endif
+
+/* AB_USB6_USB_GAIN: UI K2 controls USB audio independently (RAM only, default 100%).
+ * Q12 multiply runs on the USB tap in the audio ISR; no sample-by-sample divides. */
+#if GOLANA && !defined(FELUCCA_LOADER)
+static volatile uint32_t ab_usb6_gain_q12 = 4096u;
+static volatile uint8_t ab_usb6_level_pct = 100u;
+static uint32_t ab_usb6_get_gain(void) { return (uint32_t)ab_usb6_level_pct; }
+static void ab_usb6_set_gain(uint32_t value)
+{
+    if (value > 100u) value = 100u;
+    ab_usb6_gain_q12 = (value * 4096u + 50u) / 100u;
+    ab_usb6_level_pct = (uint8_t)value;
+}
+#endif
+static volatile uint8_t midi_usb_lost;
+static uint32_t usb_retry_ms;
+static int usb_midi_out_ready(void);
 static volatile uint8_t midi_in_overflow;               /* audio ISR discards a broken stream and releases notes */
 
 static int midi_enqueue(uint32_t pkt, uint32_t source)
@@ -193,7 +234,7 @@ static int midi_enqueue(uint32_t pkt, uint32_t source)
 
 static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
 {
-    if (usb.config && mo_w - mo_r < MQ) {
+    if (usb_midi_out_ready() && mo_w - mo_r < MQ) {
         midi_out_q[mo_w % MQ] = pkt;
         RING_PUBLISH();
         mo_w++;
@@ -230,6 +271,16 @@ static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
 #error "FELUCCA_USB_LAYOUT is 0..3"
 #endif
 
+/* AB_USB1_INTERFACE_NAMES: app only */
+#if GOLANA && !defined(FELUCCA_LOADER)
+#define AB_USB1_AUDIO_IFSTR 3
+#define AB_USB1_MIDI_IFSTR 4
+#define AB_USB1_BCD_BUMP 0x30
+#else
+#define AB_USB1_AUDIO_IFSTR 0
+#define AB_USB1_MIDI_IFSTR 0
+#define AB_USB1_BCD_BUMP 0
+#endif
 #define D_CFG(len, nif) 9, 2, (len) & 0xFF, (len) >> 8, (nif), 1, 0, 0x80, 50
 #define D_IAD(first, n, cls, sub, proto) 8, 0x0B, (first), (n), (cls), (sub), (proto), 0
 #if FELUCCA_UAC_48K
@@ -250,19 +301,15 @@ static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
  * streaming interface and no audio device appears (MIDI still works). Listed last, MIDI is dropped at the
  * end of the walk and the audio streaming interface is parsed. The class spec gives the order no meaning
  * (Linux takes each listed interface on its own); FELUCCA_UAC_AS_FIRST=0: 1.0 .. 1.5's order (MIDI first). */
-#if FELUCCA_UAC_AS_FIRST
-#define AC_COLL(a) (a) + 2, (a) + 1
-#else
-#define AC_COLL(a) (a) + 1, (a) + 2
-#endif
+/* USB1: bInCollection=1; only the AudioStreaming interface belongs here. */
 #define D_AC(a)                                                                                      \
-    9, 4, (a), 0, 0, 1, 1, 0, 0,                                                                     \
-    10, 0x24, 1, 0x00, 0x01, 31, 0, 2, AC_COLL(a),         /* AC header 1.00: audio + MIDI streaming */ \
+    9, 4, (a), 0, 0, 1, 1, 0, AB_USB1_AUDIO_IFSTR,                                                                     \
+    10, 0x24, 1, 0x00, 0x01, 31, 0, 2, (a) + 2, (a) + 1, /* PORT2 original two-interface collection, AS first */ \
     12, 0x24, 2, 1, 0x03, 0x06, 0, 2, 0x03, 0x00, 0, 0,    /* input terminal 1: line, 2 ch (L R) */      \
     9, 0x24, 3, 2, 0x01, 0x01, 0, 1, 0,                    /* output terminal 2: USB streaming, from 1 */
 #define D_AS(s)                                                                                      \
-    9, 4, (s), 0, 0, 1, 2, 0, 0,                           /* audio streaming, alt 0: no bandwidth */    \
-    9, 4, (s), 1, 1, 1, 2, 0, 0,                           /* alt 1: the stream */                      \
+    9, 4, (s), 0, 0, 1, 2, 0, AB_USB1_AUDIO_IFSTR,                           /* audio streaming, alt 0: no bandwidth */    \
+    9, 4, (s), 1, 1, 1, 2, 0, AB_USB1_AUDIO_IFSTR,                           /* alt 1: the stream */                      \
     7, 0x24, 1, 2, 1, 0x01, 0x00,                          /* AS general: terminal 2, delay 1, PCM */   \
     D_FMT                                                  /* type I: 2 ch, 16 bit, the rates */        \
     9, 5, 0x84, 0x05, UAC_MAXP & 0xFF, UAC_MAXP >> 8, 1, 0, 0,   /* EP4 IN isochronous async, 1 ms */   \
@@ -272,7 +319,7 @@ static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
 #define D_AS(s)
 #endif
 #define D_MIDI(m)                                                                                    \
-    9, 4, (m), 0, 2, 1, 3, 0, 0,                                                                     \
+    9, 4, (m), 0, 2, 1, 3, 0, AB_USB1_MIDI_IFSTR,                                                                     \
     7, 0x24, 1, 0x00, 0x01, 0x41, 0x00,                                                              \
     6, 0x24, 2, 1, 1, 0,                                                                             \
     6, 0x24, 2, 2, 2, 0,                                                                             \
@@ -298,7 +345,7 @@ static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
     7, 5, 0x83, 2, 64, 0, 0,                               /* EP3 IN bulk */
 #define CDC_LEN 66                                         /* with its IAD */
 #define BCD_LO(cdc)                                                                                  \
-    (0x10 * (FELUCCA_UAC + FELUCCA_UAC_48K) + 0x08 * FELUCCA_UAC_AS_FIRST + ((cdc) ? 0x01 + 2 * FELUCCA_USB_LAYOUT : 0))
+    (0x10 * (FELUCCA_UAC + FELUCCA_UAC_48K) + 0x08 * FELUCCA_UAC_AS_FIRST + ((cdc) ? 0x01 + 2 * FELUCCA_USB_LAYOUT : 0) + AB_USB1_BCD_BUMP)
 #define D_DEV(bcdusb, cls, sub, proto, cdc)                                                          \
     18, 1, (bcdusb) & 0xFF, (bcdusb) >> 8, (cls), (sub), (proto), 64, 0x09, 0x12, FELUCCA_USB_PID & 0xFF, \
     FELUCCA_USB_PID >> 8, BCD_LO(cdc), 0x03, 1, 2, 0, 1
@@ -307,6 +354,35 @@ static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
 #define CFG_LEN_PLAIN (9 + AUD_LEN)
 static const uint8_t DEV_DESC_PLAIN[18] = {D_DEV(0x0110, 0, 0, 0, 0)};
 static const uint8_t CFG_DESC_PLAIN[] = {D_CFG(CFG_LEN_PLAIN, AUD_NIF), D_AUDIO(0)};
+
+/* AB_USB4_DESCRIPTOR_SETS: standalone MIDI + UAC1, no CDC and no BLE.
+ * MIDI DEVICE has an AudioControl(0) + MIDIStreaming(1) interface;
+ * AUDIO DEVICE has AudioControl(0) + AudioStreaming(1).
+ * Unlike the original composite mode, audio-only's AC collection points to IF1.
+ */
+#if GOLANA && !defined(FELUCCA_LOADER) && FELUCCA_UAC && !FELUCCA_CDC
+#define AB_USB4_MIDI_AC(a) \
+    9, 4, (a), 0, 0, 1, 1, 0, AB_USB1_MIDI_IFSTR, \
+    9, 0x24, 1, 0x00, 0x01, 9, 0, 1, (a) + 1,
+#define AB_USB4_AUDIO_AC(a) \
+    9, 4, (a), 0, 0, 1, 1, 0, AB_USB1_AUDIO_IFSTR, \
+    9, 0x24, 1, 0x00, 0x01, 30, 0, 1, (a) + 1, \
+    12, 0x24, 2, 1, 0x03, 0x06, 0, 2, 0x03, 0x00, 0, 0, \
+    9, 0x24, 3, 2, 0x01, 0x01, 0, 1, 0,
+/* Compiled, exact counts: 9 CFG + 18 AC + 74 MS = 101;
+ *                         9 CFG + 39 AC + 52 AS = 100. */
+static const uint8_t AB_USB4_CFG_MIDI[] = {D_CFG(101, 2), AB_USB4_MIDI_AC(0) D_MIDI(1)};
+static const uint8_t AB_USB4_CFG_AUDIO[] = {D_CFG(100, 2), AB_USB4_AUDIO_AC(0) D_AS(1)};
+typedef char ab_usb4_midi_len_ok[sizeof AB_USB4_CFG_MIDI == 101 ? 1 : -1];
+typedef char ab_usb4_audio_len_ok[sizeof AB_USB4_CFG_AUDIO == 100 ? 1 : -1];
+/* USB1 combined version 0x0348. Mode-only USB versions 0x0349, 0x034A. */
+#define AB_USB4_MODE_DEV(bump) \
+    18, 1, 0x10, 0x01, 0, 0, 0, 64, 0x09, 0x12, \
+    FELUCCA_USB_PID & 0xFF, FELUCCA_USB_PID >> 8, BCD_LO(0) + (bump), 0x03, 1, 2, 0, 1
+static const uint8_t AB_USB4_DEV_MIDI[] = {AB_USB4_MODE_DEV(1)};
+static const uint8_t AB_USB4_DEV_AUDIO[] = {AB_USB4_MODE_DEV(2)};
+#endif
+
 typedef char cfg_plain_len_ok[sizeof CFG_DESC_PLAIN == CFG_LEN_PLAIN ? 1 : -1];
 #if FELUCCA_CDC
 #define CFG_LEN (9 + 8 + AUD_LEN + CDC_LEN)
@@ -346,7 +422,7 @@ static uint8_t usb_cdc_on = FELUCCA_CDC_DEFAULT != 0;      /* the console is pre
 #define USB_CDC_ON 0
 #define AUD_IF 0u
 #endif
-#define UAC_AS_IF (AUD_IF + 2u)
+#define UAC_AS_IF (AUD_IF + AB_USB4_AS_IF)
 static const uint8_t STR0[4] = {4, 3, 0x09, 0x04};
 static const uint8_t STR1[] = {42, 3, 'H', 0, 0xFC, 0, 'g', 0, 'e', 0, 'l', 0, 't', 0, 'o', 0, 'n', 0, ' ', 0, 'I', 0,
                                'n', 0, 's', 0, 't', 0, 'r', 0, 'u', 0, 'm', 0, 'e', 0, 'n', 0, 't', 0, 's', 0};
@@ -363,16 +439,37 @@ static const uint8_t STR2[] = {16, 3, 'F', 0, 'e', 0, 'l', 0, 'u', 0, 'c', 0, 'c
 #endif
 #endif
 
+#if GOLANA && !defined(FELUCCA_LOADER)
+static const uint8_t AB_USB1_AUDIO_STRING[] = {36, 3, 'a', 0, 'n', 0, 'a', 0, 'l', 0, 'o', 0, 'g', 0, 'B', 0, 'E', 0, 'A', 0, 'S', 0, 'T', 0, ' ', 0, 'A', 0, 'u', 0, 'd', 0, 'i', 0, 'o', 0};
+static const uint8_t AB_USB1_MIDI_STRING[] = {34, 3, 'a', 0, 'n', 0, 'a', 0, 'l', 0, 'o', 0, 'g', 0, 'B', 0, 'E', 0, 'A', 0, 'S', 0, 'T', 0, ' ', 0, 'M', 0, 'I', 0, 'D', 0, 'I', 0};
+#endif
+
 static int get_desc(uint32_t wvalue, const uint8_t **d, uint16_t *l)
 {
     switch (wvalue >> 8) {
     case 1:
+#if GOLANA && !defined(FELUCCA_LOADER) && FELUCCA_UAC && !FELUCCA_CDC
+        if (ab_usb4_mode == AB_USB4_MIDI_DEVICE) *d = AB_USB4_DEV_MIDI;
+        else if (ab_usb4_mode == AB_USB4_AUDIO_DEVICE) *d = AB_USB4_DEV_AUDIO;
+        else *d = DEV_DESC_PLAIN;
+#else
         *d = USB_CDC_ON ? DEV_DESC : DEV_DESC_PLAIN;
+#endif
         *l = 18;
         return 1;
     case 2:
+#if GOLANA && !defined(FELUCCA_LOADER) && FELUCCA_UAC && !FELUCCA_CDC
+        if (ab_usb4_mode == AB_USB4_MIDI_DEVICE) {
+            *d = AB_USB4_CFG_MIDI; *l = sizeof AB_USB4_CFG_MIDI;
+        } else if (ab_usb4_mode == AB_USB4_AUDIO_DEVICE) {
+            *d = AB_USB4_CFG_AUDIO; *l = sizeof AB_USB4_CFG_AUDIO;
+        } else {
+            *d = CFG_DESC_PLAIN; *l = sizeof CFG_DESC_PLAIN;
+        }
+#else
         *d = USB_CDC_ON ? CFG_DESC : CFG_DESC_PLAIN;
         *l = (uint16_t)(USB_CDC_ON ? sizeof CFG_DESC : sizeof CFG_DESC_PLAIN);
+#endif
         return 1;
     case 3:
         switch (wvalue & 0xFFu) {
@@ -388,6 +485,16 @@ static int get_desc(uint32_t wvalue, const uint8_t **d, uint16_t *l)
             *d = STR2;
             *l = sizeof STR2;
             return 1;
+#if GOLANA && !defined(FELUCCA_LOADER)
+        case 3:
+            *d = AB_USB1_AUDIO_STRING;
+            *l = sizeof AB_USB1_AUDIO_STRING;
+            return 1;
+        case 4:
+            *d = AB_USB1_MIDI_STRING;
+            *l = sizeof AB_USB1_MIDI_STRING;
+            return 1;
+#endif
         default:
             return 0;
         }
@@ -472,6 +579,7 @@ static void uac_rate_set(uint32_t hz)
 
 static void ep1_config(void)
 {
+    if (AB_USB4_MIDI_ALLOWED) {
     fm1_usb_ep_txbuf(1, ep1tx);
     fm1_usb_ep_rxbuf(1, ep1rx);
     sie_wr(S_INDEX, 1);
@@ -483,6 +591,9 @@ static void ep1_config(void)
     sie_wr(S_RXCSR2, 0);
     sie_wr(S_INTRRX1E, 0x02);
     fm1_usb_ep_enable(1u << 1);
+    } else {
+        sie_wr(S_INTRRX1E, 0);
+    }
 #if FELUCCA_CDC
     if (!usb_cdc_on)
         goto no_cdc;                                    /* presented without the console: EP2 / EP3 unused */
@@ -506,12 +617,16 @@ static void ep1_config(void)
 no_cdc:;
 #endif
 #if FELUCCA_UAC
+    if (AB_USB4_AUDIO_ALLOWED) {
     fm1_usb_ep4_txbuf(ep4tx);
     sie_wr(S_INDEX, 4);
     sie_wr(S_TXMAXP, 0xFF);
     uac_ep4_reset();
     fm1_usb_ep_enable(1u << 4);
     uac_stream(0);
+    } else {
+        uac_stream(0);
+    }
 #endif
 }
 
@@ -650,7 +765,7 @@ static void ep0_service(void)
         return;
     case 0x010B:                                        /* SET_INTERFACE: alt 0 (alt 1 for the audio stream) */
 #if FELUCCA_UAC
-        if (s[4] == UAC_AS_IF && wvalue <= 1u && usb.config) {
+        if (AB_USB4_AUDIO_ALLOWED && s[4] == UAC_AS_IF && wvalue <= 1u && usb.config) {
             uac_ep4_reset();
             uac_stream(wvalue);
             goto ack;
@@ -661,7 +776,7 @@ static void ep0_service(void)
         goto stall;
     case 0x810A:
 #if FELUCCA_UAC
-        if (s[4] == UAC_AS_IF) {
+        if (AB_USB4_AUDIO_ALLOWED && s[4] == UAC_AS_IF) {
             static uint8_t alt;
             alt = uac.alt;
             e0_send(&alt, 1, wlength);
@@ -673,10 +788,10 @@ static void ep0_service(void)
     case 0x0201: {                                      /* CLEAR_FEATURE(ENDPOINT_HALT): data toggle reset */
         uint32_t ep = s[4] & 0x0Fu, last = USB_CDC_ON ? 3u : 1u;
 #if FELUCCA_UAC
-        if (wvalue == 0 && s[4] == 0x84u)
+        if (AB_USB4_AUDIO_ALLOWED && wvalue == 0 && s[4] == 0x84u)
             goto ack;                                   /* isochronous: no halt, no toggle */
 #endif
-        if (wvalue != 0 || ep > last)
+        if (wvalue != 0 || ep > last || (!AB_USB4_MIDI_ALLOWED && ep == 1u))
             goto stall;                                 /* not an endpoint we have */
         if (ep) {                                       /* (EP0 has no halt to clear) */
             sie_wr(S_INDEX, ep);
@@ -715,7 +830,7 @@ static void ep0_service(void)
 #endif
 #if FELUCCA_UAC
     case 0x2201:                                        /* SET_CUR, endpoint: sampling frequency */
-        if (s[4] != 0x84u || s[3] != 1u)
+        if (!AB_USB4_AUDIO_ALLOWED || s[4] != 0x84u || s[3] != 1u)
             goto stall;
         if (wlength) {
             uac.e0_rx = 1;
@@ -731,7 +846,7 @@ static void ep0_service(void)
 #if FELUCCA_UAC_48K
         static const uint8_t RATE48[3] = {48000u & 0xFF, (48000u >> 8) & 0xFF, 48000u >> 16};
 #endif
-        if (s[4] != 0x84u || s[3] != 1u)
+        if (!AB_USB4_AUDIO_ALLOWED || s[4] != 0x84u || s[3] != 1u)
             goto stall;
 #if FELUCCA_UAC_48K
         if (s[1] == 0x83u || (s[1] == 0x81u && uac.r48)) {
@@ -849,6 +964,15 @@ static int ep1_take(const uint8_t *b, uint32_t n)
     for (i = 0; i + 3u < n; i += 4u)
         midi_in_event((uint32_t)b[i] | (uint32_t)b[i + 1] << 8 | (uint32_t)b[i + 2] << 16 | (uint32_t)b[i + 3] << 24);
     return 1;
+}
+
+#include "usb_host.c" /* MIDIMON/felucca-bsp PR #7: USB host, shared USB0 + MIDI queues */
+static int usb_midi_out_ready(void)
+{
+#if FELUCCA_USB_HOST
+    if (usb_host_active()) return usb_host_connected() != 0;
+#endif
+    return usb.config != 0 && AB_USB4_MIDI_ALLOWED;
 }
 
 static void ep1_rx(void)                                /* leaves the packet (NAK) while the ring is too full */
@@ -1056,6 +1180,16 @@ static inline int32_t uac_s16(int32_t v)
 {
     return v > 32767 ? 32767 : v < -32768 ? -32768 : v;
 }
+/* AB_USB6_USB_TAP_GAIN: attenuate USB-only PCM, never modify the shared DAC buffer.
+ * Gain <= Q12 unity, so the 16-bit intermediate fits signed 32-bit exactly. */
+static inline int32_t ab_usb6_pcm_gain(int32_t value)
+{
+#if GOLANA && !defined(FELUCCA_LOADER)
+    return (value * (int32_t)ab_usb6_gain_q12) >> 12;
+#else
+    return value;
+#endif
+}
 
 #if FELUCCA_UAC_48K
 /* 44.1 -> 48 kHz (x 160 / 147), one block: each input frame enters the history, then the 1 or 2 output
@@ -1143,9 +1277,12 @@ static __attribute__((noinline)) void uac_tap(const int32_t *out, uint32_t n)   
         (void)out;
     }
 #else
-    for (i = 0; i < n; i++)
-        ua_ring[(w + i) & (UA_N - 1u)] = (uint32_t)(uint16_t)uac_s16(out[2u * i]) |
-                                         (uint32_t)(uint16_t)uac_s16(out[2u * i + 1u]) << 16;
+    for (i = 0; i < n; i++) {
+        int32_t l = ab_usb6_pcm_gain(uac_s16(out[2u * i]));
+        int32_t r = ab_usb6_pcm_gain(uac_s16(out[2u * i + 1u]));
+        ua_ring[(w + i) & (UA_N - 1u)] = (uint32_t)(uint16_t)(int16_t)l |
+                                         (uint32_t)(uint16_t)(int16_t)r << 16;
+    }
 #endif
     RING_PUBLISH();
     ua_w = w + n;
@@ -1209,7 +1346,7 @@ static uint32_t uac_packet(uint32_t *d)
 static void uac_service(void)
 {
     uint32_t csr, n;
-    if (!usb.up || !usb.config || !uac.alt)
+    if (!AB_USB4_AUDIO_ALLOWED || !usb.up || !usb.config || !uac.alt)
         return;
     sie_wr(S_INDEX, 4);
     csr = sie_rd(S_TXCSR1);
@@ -1236,6 +1373,12 @@ static void uac_service(void)
 static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
 {
     uint32_t iu, it, ir;
+#if FELUCCA_USB_HOST
+    if (usb_host_active()) {
+        if (usb_host_connected() && uh.want == uh.on) uh_poll(); /* AB_USB5_HOST_IRQ_GATE */
+        return;
+    }
+#endif
     if (!usb.up)
         return;
     if (fm1_usb_sof_take()) {                           /* SOF pending: NOT a reliable "host is there" */
@@ -1308,9 +1451,9 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
         ep0_service();
     if (ir & 0x02u)
         usb.rx_pend = 1;
-    if (usb.rx_pend)                                    /* not every poll: 3 SIE round trips each */
+    if (AB_USB4_MIDI_ALLOWED && usb.rx_pend)           /* audio-only never uses EP1 */
         ep1_rx();
-    if (usb.config)
+    if (usb.config && AB_USB4_MIDI_ALLOWED)
         ep1_tx();
 #if FELUCCA_CDC
     if (usb.config && usb_cdc_on) {
@@ -1339,7 +1482,7 @@ static void usb_start(void)                             /* boot, or main-loop re
     sie_wr(S_INTRTX2E, 0);
     sie_wr(S_INTRRX1E, 0);
     sie_wr(S_INTRRX2E, 0);
-    fm1_usb_ep_enable(0x1Fu);
+    fm1_usb_ep_enable(0x1Fu); /* PORT2 original endpoint init */
     usb.up = usb.timeouts < 3u;                         /* a dead SIE leaves USB off */
 }
 
@@ -1348,18 +1491,79 @@ static void usb_start(void)                             /* boot, or main-loop re
  * later still enumerates. */
 static void usb_retry(uint32_t now_ms)
 {
-    static uint32_t t;
-    if (usb.up || usb.detached || now_ms - t < 1000u)
+#if FELUCCA_USB_HOST
+    if (usb_host_active()) return;
+#endif
+    /* AB_USB5_REATTACH_DELAY: protects device->device AND host->device transitions. */
+#if GOLANA && !defined(FELUCCA_LOADER) && FELUCCA_USB_HOST
+    if (ab_usb5_delay_armed) {
+        if ((int32_t)(now_ms - ab_usb5_resume_ms) < 0) return;
+        ab_usb5_delay_armed = 0;
+    }
+#endif
+    if (usb.up || usb.detached || now_ms - usb_retry_ms < 1000u)
         return;
-    t = now_ms;
+    usb_retry_ms = now_ms;
     usb.retries++;
     usb_start();
 }
+
+/* AB_USB4_SWITCH: never writes settings, firmware, project or MUSIC DISK.
+ * All transitions happen from UI/main context; PORT2 usb_host_task owns HOST.
+ * No switching while playing or OTA is allowed by the GLO UI guard. */
+#if GOLANA && !defined(FELUCCA_LOADER) && FELUCCA_USB_HOST
+static uint32_t ab_usb4_current_mode(void) { return ab_usb4_mode; }
+static void ab_usb4_set_mode(uint32_t next)
+{
+    if (next > AB_USB4_MIDI_HOST || usb.detached || next == ab_usb4_mode)
+        return;
+    /* AB_USB5_SWITCH_ORDER: USB device ISR must stop BEFORE the descriptor mode changes. */
+    usb.up = 0;
+    RING_PUBLISH();
+    ab_usb5_resume_ms = fm1_ms + 250u; /* require >=250 ms unplug gap */
+    ab_usb5_delay_armed = 1;
+    if (usb_host_active()) {
+        /* Stop host ISR via pending request before flushing its shared MIDI queues. */
+        usb_host_switch(next == AB_USB4_MIDI_HOST);
+        ab_usb4_mode = (uint8_t)next;
+        mi_r = mi_w; mo_r = mo_w;
+        usb.rx_pend = 0;
+        return;
+    }
+    if (next == AB_USB4_MIDI_HOST) {
+        usb_host_switch(1); /* PORT2 main-loop task detaches device and starts host. */
+        ab_usb4_mode = (uint8_t)next;
+        mi_r = mi_w; mo_r = mo_w;
+        usb.rx_pend = 0;
+        return;
+    }
+    usb_host_switch(0);     /* cancel unprocessed host request */
+    fm1_usb_off();          /* D+ drops BEFORE descriptor switch */
+    usb.config = 0;
+    usb.suspended = 0;
+    usb.e0_tx = usb.has_pend_addr = usb.rx_pend = 0;
+    usb.sx_on = 0;
+    mi_r = mi_w;
+    mo_r = mo_w;
+#if FELUCCA_OTA
+    so_r = so_w; sx_collect = sx_ready = sx_busy = 0;
+#endif
+#if FELUCCA_UAC
+    uac_stream(0);
+#endif
+    RING_PUBLISH();
+    ab_usb4_mode = (uint8_t)next;
+    usb_retry_ms = fm1_ms - 1000u; /* requested ASAP, constrained by detach delay */
+}
+#endif
 
 static void usb_detach(void)
 {
     usb.detached = 1;
     usb.up = 0;
+#if FELUCCA_USB_HOST
+    if (usb_host_active()) uh_session_end();
+#endif
     fm1_usb_off();
 }
 

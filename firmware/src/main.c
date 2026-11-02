@@ -42,7 +42,7 @@ void fm1_timer5_irq(void)
     if (felucca_dbg.in_audio) {
         felucca_dbg.nested++;
 #if FELUCCA_UAC
-        if (usb_due)
+        if (usb_due && !usb_host_active())
             uac_service();
 #endif
         t5_nested_ticks += fm1_ticks() - t0;
@@ -103,7 +103,9 @@ static void felucca_init(void)
     for (i = 0; i < G_COUNT; i++)
         song.g[i] = GP[i].def;
     undo_depth++;                             /* (no undo copy of the power-on loads) */
-    fm6_init();                               /* every track's FM6 patch: the init voice */
+#if !GOLANA
+    fm6_init();                               /* only when the FM6 engine exists */
+#endif
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];
         track_defaults(t);
@@ -112,8 +114,6 @@ static void felucca_init(void)
         t->engine = t->eng_req;
         eng_mem_claim(t);                     /* (zeros already: no note can come before) */
         track_defaults_steps(t);              /* (a sound load never touches them) */
-        if (TRK_DEF[i][2])
-            load_pat16(t, PATTERNS[TRK_DEF[i][2] - 1u].note, PATTERNS[TRK_DEF[i][2] - 1u].flags);
         pat_sig[i] = steps_sig(t);            /* a default pattern, not the user's */
         pat_last[i] = TRK_DEF[i][2];
     }
@@ -219,6 +219,9 @@ static void fm1_main(void)
     for (;;) {
         uint32_t m = fm1_ms;
         fm1_wdt_feed();
+#if FELUCCA_USB_HOST
+        usb_host_task(fm1_ms);
+#endif
         usb_retry(fm1_ms);
         if (fm1_ms > 30000u && bootguard.pending) {     /* a crash or hang in the first 30 s counts */
             bootguard.pending = 0;
@@ -286,6 +289,7 @@ static void fm1_main(void)
 #if FELUCCA_CDC
         cdc_task();
 #endif
+        ab_m_play_service();
         felucca_dbg.ui_frames++;
         felucca_dbg.page = ui.page;
         felucca_dbg.home = ui.home;
@@ -306,6 +310,7 @@ static void fm1_main(void)
 #endif
         felucca_dbg.stage = 9;
         while (fm1_ms - m < 15u) {                               /* ~60 UI frames/s at most */
+            ab_m_play_service();
 #if GOLANA
             gu_input();
 #else
@@ -357,6 +362,9 @@ static void golana_rescue(void)
     fm1_irq_enable_all();
     for (;;) {
         fm1_wdt_feed();
+#if FELUCCA_USB_HOST
+        usb_host_task(fm1_ms);
+#endif
         usb_retry(fm1_ms);
         if (usb.uboot_req) {                    /* SysEx soft key: the chip's UBOOT */
             usb_detach();

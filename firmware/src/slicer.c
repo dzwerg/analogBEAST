@@ -73,11 +73,12 @@ static void slicer_start(void)   /* seq_start: the next block starts step 0 of e
 static uint32_t sl_pattern(const track_t *t) { return SL_PAT[(uint32_t)(t->p[P_SLPAT] - 1) % SL_NPAT]; }
 
 /* the step clock enters the next step */
+static uint32_t beat_samples(void); /* implemented in fx.c, shared clock */
 static void sl_enter(const track_t *t, sl_t *s)
 {
     uint32_t mode = (uint32_t)t->p[P_SLCR];
     s->idx = (uint8_t)((s->idx + 1u) & 15u);
-    s->base = (uint32_t)FS * 60u / (uint32_t)song.g[G_BPM] / SL_DEN[(uint32_t)t->p[P_SLRATE] % 6u];
+    s->base = beat_samples() / SL_DEN[(uint32_t)t->p[P_SLRATE] % 6u];
     s->len = swing_step_len(t, s->base, s->idx);   /* core.h, as seq.c step_samples */
     s->pos = 0;
     s->bit = (uint8_t)((sl_pattern(t) >> s->idx) & 1u);

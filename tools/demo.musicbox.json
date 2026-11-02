@@ -1,0 +1,12 @@
+{
+  "type": "M1",
+  "name": "Musikbox Probe",
+  "bpm": 120,
+  "tpq": 96,
+  "events": [
+    {"delta": 0, "op": "0x90", "channel": 0, "a": 60, "b": 96},
+    {"delta": 96, "op": "0x80", "channel": 0, "a": 60, "b": 0},
+    {"delta": 0, "op": "0x90", "channel": 0, "a": 64, "b": 96},
+    {"delta": 96, "op": "0x80", "channel": 0, "a": 64, "b": 0}
+  ]
+}

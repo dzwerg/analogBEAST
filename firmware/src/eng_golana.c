@@ -171,6 +171,7 @@ static void gol_block(track_t *t)
         g->seed = 0x5EED1234;
 }
 
+
 static void gol_note_on(track_t *t, voice_t *v)
 {
     glp_t *g = gl_part(t);

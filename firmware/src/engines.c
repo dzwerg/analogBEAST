@@ -10,9 +10,12 @@
  * last claimed it (eng_mem_owner); a switch to another such engine zeroes its engine_t.mem bytes, which is
  * the state each had at power-on, so a switch sounds as it did with the arrays (tests/union_test.c). State
  * that runs on across notes and switches stays outside (WHEEL's wheels, GRAIN's random numbers).
+ * USB9 Stage3: reclaim/invalidate this region on EVERY engine change, even to an engine
+ * with no engine_t.mem. Other global DSP state must be separately audited. This
+ * pool is per part (NPART), NOT a single global mono-engine allocation.
  * Sized by the largest, PHYS (3 x SYMP's slot); an engine that needs more than ENG_MEM_PART grows it for
  * every part (x NPART of the pool). Zero-initialised pool section: main.c fm1_cstart clears it. */
-#define ENG_MEM_PART 12888u
+#define ENG_MEM_PART 768u
 static union {
     uint64_t align;
     uint8_t b[ENG_MEM_PART];
@@ -42,9 +45,20 @@ static uint8_t eng_mem_owner[NPART];       /* engine index + 1 whose state is in
 #endif
 #if GOLANA
 #include "eng_golana.c"         /* GOLANA: Golana's synth */
+#include "eng_b1.c"             /* USB9 Stage6: B1 engine */
 #endif
 
 /* the editor protocol, user presets and projects store these indices: append, never reorder */
+#if GOLANA
+/* Legacy indices decode to current Golana: they must never access retired
+ * engine state. Engine numbers retained only for existing project ABI. */
+static const engine_t *const ENGINES[NENGINES] = {
+    &ENG_ANALOG, &ENG_GOLANA, &ENG_GOLANA, &ENG_LOFI,
+    &ENG_GOLANA, &ENG_GOLANA, &ENG_GOLANA, &ENG_GOLANA,
+    &ENG_GOLANA, &ENG_GOLANA, &ENG_GOLANA, &ENG_GOLANA,
+    &ENG_GOLANA, &ENG_GOLANA, &ENG_B1
+};
+#else
 static const engine_t *const ENGINES[NENGINES] = {
     &ENG_ANALOG,                 /* 0 */
 #if FELUCCA_FM4
@@ -70,10 +84,17 @@ static const engine_t *const ENGINES[NENGINES] = {
     &ENG_GOLANA,                 /* 13 (ENGI_GOLANA) */
 #endif
 };
+#endif
 _Static_assert(NELEM(ENGINES) == NENGINES, "ENGINES: NENGINES of them");
 
 /* a track's engine number as an index (the audio paths: a compare, cheaper than % NENGINES; a bad number: 0) */
-static inline uint32_t eng_idx(uint32_t e) { return e < NENGINES ? e : 0u; }
+static inline uint32_t eng_idx(uint32_t e) {
+#if GOLANA
+    return (e == 0u || e == 3u || e == ENGI_GOLANA || e == ENGI_B1) ? e : ENGI_GOLANA;
+#else
+    return e < NENGINES ? e : 0u;
+#endif
+}
 
 /* part t's engine memory goes to its engine (t->engine; voice.c engine_block, once a block: on a switch, after
  * the old engine's fade, before any note on the new one): zeroed (its engine_t.mem bytes) when another
@@ -86,12 +107,17 @@ static void eng_mem_claim(const track_t *t)
         return;
     e = eng_idx(t->engine);
     n = ENGINES[e]->mem;
-    if (!n || eng_mem_owner[p] == e + 1u)
+    /* USB9 Stage3: every engine transition invalidates the former DSP state,
+     * including changes into engines with no private state.  The single
+     * per-part pool stays allocated but its bytes are reused, never stacked.
+     * The owner tag changes even when n == 0, so switching back starts clean. */
+    if (eng_mem_owner[p] == e + 1u)
         return;
     w = (uint32_t *)ENG_MEM(p);
-    for (k = 0; k < (n + 3u) / 4u; k++)
+    for (k = 0; k < ENG_MEM_PART / sizeof(*w); k++)
         w[k] = 0;
     eng_mem_owner[p] = (uint8_t)(e + 1u);
+    (void)n;
 }
 
 /* the sample source a track's sound plays that has no data (SAMPLE's SET, GRAIN's SRC, SLICE's SRC: an empty or
@@ -120,7 +146,7 @@ static const char *snd_missing(const track_t *t, uint32_t *code)
  * stores and the protocol hold them); only this table orders them */
 static const uint8_t ENGINE_ORDER[NENG_SHOWN] = {
 #if GOLANA
-    ENGI_GOLANA,
+    ENGI_GOLANA, 0u, 3u, ENGI_B1, /* USB9: GOLANA / ANALOG / LOFI / B1 */
 #else
     0,                           /* ANALOG */
     12,                          /* FM6 */
@@ -139,7 +165,7 @@ static const uint8_t ENGINE_ORDER[NENG_SHOWN] = {
 /* the engines one can pick (engine 1 only with FELUCCA_FM4), in ENGINE_ORDER: eng_ok(e), the n-th of them
  * eng_vis(n), e's place among them eng_rank(e), the next / previous one eng_step(e, dir) (wraps) */
 #if GOLANA
-static int eng_ok(uint32_t e) { return e == ENGI_GOLANA; }   /* (a Felucca sound elsewhere in flash: not Golana's) */
+static int eng_ok(uint32_t e) { return e == ENGI_GOLANA || e == 0u || e == 3u || e == ENGI_B1; } /* USB9: B1 locked */
 #else
 static int eng_ok(uint32_t e) { return e < NENGINES && (FELUCCA_FM4 || e != ENGI_DIGITAL); }
 #endif
@@ -147,8 +173,15 @@ static uint32_t eng_vis(uint32_t n) { return ENGINE_ORDER[n % NENG_SHOWN]; }
 static uint32_t eng_rank(uint32_t e)
 {
     uint32_t n;
-    if (!eng_ok(e))
-        e = ENGI_FM6;                            /* (DIGITAL without FELUCCA_FM4: its sounds play as FM6) */
+    if (!eng_ok(e)) {
+#if GOLANA
+        /* USB9: retired engine IDs have no selectable rank; fall back to
+         * Golana, never to an unavailable FM6 engine. Keep preset IDs intact. */
+        e = ENGI_GOLANA;
+#else
+        e = ENGI_FM6; /* retired DIGITAL maps to FM6 in Felucca builds */
+#endif
+    }
     for (n = 0; n < NENG_SHOWN && ENGINE_ORDER[n] != e; n++)
         ;
     return n < NENG_SHOWN ? n : 0u;
@@ -162,44 +195,9 @@ static uint32_t eng_step(uint32_t e, int32_t dir)
  * only suggests one with PAT(n), loading a sound never touches the steps. Absolute notes, loaded as they
  * are (DRUM plays them as GM drums, SLICE as slices; SCL TRANS and OCT transpose): 0 = rest;
  * flags 1 = accent, 2 = slide, 4 = tie (holds the previous note). Names: at most 8 characters */
-#define T_ 4
-static const struct {
-    const char *name;
-    uint8_t note[16], flags[16];
-} PATTERNS[] = {
-    {"ACID", {45, 45, 57, 45, 0, 48, 45, 55, 45, 0, 57, 52, 45, 48, 0, 50},          /* 1 */
-     {1, 0, 2, 0, 0, 0, 1, 2, 0, 0, 1, 0, 0, 2, 0, 1}},
-    {"OFFBEAT", {0, 36, 0, 36, 0, 36, 0, 48, 0, 36, 0, 36, 0, 39, 0, 43},          /* 2 bass */
-     {0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0}},
-    {"MELODY", {60, 0, 67, 0, 72, 67, 0, 64, 62, 0, 69, 0, 74, 69, 0, 67},         /* 3 pluck */
-     {1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0}},
-    {"LEAD", {72, 0, 0, 74, 0, 0, 76, 0, 79, 0, 76, 0, 74, 0, 0, 0},               /* 4 */
-     {1, T_, 0, 2, T_, 0, 0, 0, 1, 0, 2, 0, 0, T_, T_, 0}},
-    {"PAD", {60, 0, 0, 0, 0, 0, 0, 0, 57, 0, 0, 0, 55, 0, 0, 0},                   /* 5 long notes */
-     {0, T_, T_, T_, T_, T_, T_, 0, 0, T_, T_, 0, 0, T_, T_, 0}},
-    {"KEYS", {0, 0, 60, 0, 0, 63, 0, 0, 0, 0, 60, 0, 0, 65, 0, 63},                /* 6 offbeat stabs */
-     {0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0}},
-    {"BELL", {72, 0, 0, 79, 0, 0, 84, 0, 0, 0, 76, 0, 0, 0, 0, 0},                 /* 7 sparse */
-     {1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
-    {"SUB", {36, 0, 0, 0, 0, 0, 0, 36, 0, 0, 34, 0, 0, 0, 0, 0},                   /* 8 low, held */
-     {1, T_, T_, T_, 0, 0, 0, 0, 0, 0, 0, T_, T_, T_, 0, 0}},
-    /* SLICE (eng_slice.c): note = C4 + slice */
-    {"CHOP", {60, 61, 62, 67, 64, 65, 60, 69, 68, 70, 62, 67, 72, 72, 74, 64},     /* 9 16 slices re-ordered */
-     {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0}},
-    {"STUTTER", {60, 60, 61, 61, 62, 0, 63, 63, 64, 65, 65, 0, 66, 66, 66, 67},    /* 10 8 slices, repeats */
-     {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0}},
-    {"SLICES", {60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75},   /* 11 in order */
-     {1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0}},
-    /* DRUM (General MIDI: 36 kick, 38 snare, 42 closed / 46 open hi-hat) */
-    {"BEAT", {36, 42, 42, 42, 38, 42, 36, 42, 36, 42, 42, 36, 38, 42, 46, 42},     /* 12 */
-     {1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0}},
-    /* 16ths up a C minor arpeggio, twice: the line the ARP presets (RAVE, ARP 8BIT, ARP LEAD) suggest
-     * now that the arpeggiator is the track's and a preset no longer switches it on */
-    {"ARP", {48, 51, 55, 60, 63, 67, 72, 75, 48, 51, 55, 60, 63, 67, 72, 75},       /* 13 */
-     {1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0}},
-};
-#undef T_
-#define NPATTERNS (sizeof PATTERNS / sizeof PATTERNS[0])
+/* Factory sequence phrases deliberately NOT linked into analogBEAST.
+ * All patterns live on the MUSIC DISK; synth sound presets remain intact. */
+#define NPATTERNS 0u
 
 /* the parts at power-on (engine, preset, PATTERNS[n - 1] in the sequencer, 0 = empty: all are): bass, pad, lead, drums */
 #if GOLANA                       /* Golana: part 1 plays; the others are idle GOLANA parts */

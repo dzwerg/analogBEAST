@@ -1,67 +1,78 @@
-# analogBEAST v1.1
+# analogBEAST 2.0 RC1
 
-**Two synthesis routings. One powerful sequencer. Complete songs and albums.**
-**Zwei Synth-Routings. Ein leistungsfähiger Sequencer. Komplette Songs und Albums.**
+**Experimental release candidate for the M-VAVE FM-1** · JieLi AC79 · device firmware identity `FM-1_901`.
 
-Alternative open-source synthesizer and sequencer firmware for the **M-VAVE FM-1**.
+> **RC1 / TEST BUILD — not a fully hardware-validated final release.** The firmware was built natively on the developer's X1, but not every synthesizer mode, preset transition, MIDI route or USB-audio host has been verified on hardware. Keep a known-good recovery image. Flash at your own risk.
 
-[Website](https://dzwerg.github.io/analogBEAST/) · [Synth Studio](https://dzwerg.github.io/analogBEAST/webapp/editor/) · [Web Emulator](https://dzwerg.github.io/analogBEAST/emu/) · [Web Installer](https://dzwerg.github.io/analogBEAST/webapp/installer/) · [Download v1.1](https://github.com/dzwerg/analogBEAST/releases/tag/v1.1)
+## Highlights
 
-**Documentation:** [English](README.en.md) · [Deutsch](README.de.md) · [Release notes](docs/RELEASE_NOTES-v1.1.md)
+- **Five selectable synthesis modes:** KORG, BRUTE, ANALOG, LOFI and experimental B1. KORG and BRUTE share the Golana engine path; ANALOG and LOFI use Felucca engine paths. B1 is a custom experimental bass engine, **not yet a faithful Donner Essential B1 emulation**.
+- **SYNTH MODE** interface expanded from the KORG/BRUTE-only selector to five modes (Stage 15).
+- **Preset browser expanded to 49 entries** (Stage 18): user instruments **P01–P32**, original Felucca ANALOG factory sounds **A01–A12**, original LOFI factory sounds **L01–L05**. The factory entries are built into the firmware and do not consume user slots. Selecting a factory preset is intended to activate its owning engine and load its parameter set. Actual UI/audio behavior requires on-device verification.
+- **Instrument compatibility:** the existing 32-slot user flash layout is retained. **P18 = SYNTH KEYBOARD** (legacy source name `SYNT PIANO`), **P19 = PETZ MOOG**; embedded 192-byte source originals were independently backed up in Stage 16. That does **not** constitute a live device-flash backup of edited versions.
+- **USB composite audio/MIDI and mode switching:** USB source carried forward unchanged from the working USB8 original-composite baseline. Four USB profiles under development: AUDIO + MIDI, MIDI DEVICE, AUDIO DEVICE, MIDI HOST. Successful operation and compatibility vary by host and must be tested. USB audio output volume and local analog master are intended to be separate controls.
+- **Four-part engine/DSP state design:** per-part shared synthesis state, engine switch fade and state reclaim; not five always-running complete engines per part.
 
-## At a glance / Auf einen Blick
+## Factory sounds
 
-| Feature / Merkmal | analogBEAST v1.1 |
-|---|---|
-| Synthesis / Synthese | **MIKROKORG** and **BRUTE** — two distinct DSP signal paths within GOLANA |
-| BRUTE filter / Filter | **Digital Steiner-Parker-inspired**, low-pass / band-pass / high-pass, nonlinear saturation |
-| Sound programs / Klangprogramme | **32** (P01–P32) |
-| Pattern banks / Pattern-Bänke | **8** (A–H), 16 patterns per bank = **128 patterns** |
-| Banks A–D / Bänke A–D | Up to **64 steps** per pattern |
-| Banks E–H / Bänke E–H | Up to **16 steps** per pattern |
-| SONG MODE | **32 songs**, up to **64 rows/commands** each |
-| ALBUM MODE | **4 albums**, up to **32 song entries** each |
-| Song commands / Befehle | PATTERN, TEMPO, PRESET, REST, ARP, END + OCTAVE, TRANSPOSE, REPEAT, JUMP, ENDSTEP, BEGIN |
-| Browser tools / Browser-Werkzeuge | Synth Studio, graphical SONG/ALBUM editor, MIDI-song import, WebAssembly emulator, USB web installer |
-| MIDI | USB MIDI; Program Change P01–P32; pattern/song transfer tools |
-| Firmware package identity | `FM-1_901` (kept for updater compatibility) |
+| ANALOG (12) | LOFI (5) |
+| --- | --- |
+| SAW LEAD | PULSE LD |
+| SOFT PAD | WAVE BASS |
+| SQR BASS | ARP 8BIT |
+| PWM STR | WAVE LEAD |
+| ACID | STEP LEAD |
+| SINE KEY | |
+| RAVE | |
+| SUB BASS | |
+| PLUCK | |
+| BRASS | |
+| WIND | |
+| STRINGS | |
 
-## New in v1.1 / Neu in Version 1.1
+## B1: experimental / known limitations
 
-**Six additional SONG commands:** `OCTAVE`, `TRANSPOSE`, `REPEAT`, `JUMP`, `ENDSTEP`, `BEGIN`; play a subrange of a pattern several times, change pitch without rewriting notes and create continuous SONG loops.
+The B1 engine currently exposes WAVE, CUT, RES, DEC, DRV, DLY, FDBK and SLIDE on two EDIT pages. **It is not yet a control-for-control model of the Donner B1.** Missing or incomplete behavior includes pitch knob, filter envelope depth, dedicated accent amount and step-accent coupling, saturation on/off and tone, separate delay on/off and adjustable delay time; the current delay is very short. Do not describe B1 as a complete hardware emulation.
 
-**Live performance:** black keys choose BANK A–H, white keys choose PATTERN 01–16; queue NEXT at the pattern boundary, adjust TEMPO/PRESET during PLAY, live octave shifts and note-following key LEDs. The Web Studio source adds transpose/octave editing and undo; the Python MIDI transfer tool understands all new commands.
+## RC1 change history
 
-**Documentation:** [English release notes](docs/RELEASE_NOTES-v1.1.md) · [Deutsche Bedienungsanleitung](docs/ANLEITUNG-v1.1.de.md) · [QA record](docs/QA-v1.1.md).
+| Milestone | Changes |
+| --- | --- |
+| USB8 | Recover working original composite USB audio/MIDI descriptor path; preserve as fallback. |
+| USB9 Stage 1–5 | Integrate additional engine identifiers and per-part DSP-state infrastructure; prepare B1 synthesis. |
+| Stage 6 | Register B1; remove incompatible libc usage and safeguard MIDI Learn flash row 14 from engine ID 14 favorite writes. |
+| Stage 7–12 | Correct B1 glide/first-note behavior, accent filter action, UB in signed shifting and bidirectional glide landing; native build passes. |
+| Stage 13–14 | Static source integration audit and pre-flash file checks; **not** hardware validation. |
+| Stage 15 | Five-way SYNTH MODE with external engine OSC 1/OSC 2 parameter pages. |
+| Stage 16 | Extract/verify embedded P18/P19 original records into a separate local backup; **not a device backup**. |
+| Stage 17 | Compile-time factory-catalog / 32-slot safety checks, retaining original 12 ANALOG and 5 LOFI sounds. |
+| **Stage 18 — RC1** | Extend the **actual Golana PRESETS UI** from P01–P32 to P01–P32 + A01–A12 + L01–L05 and route factory selections to their engines; native JieLi build passes. |
 
-**Heads-up:** the public GitHub Pages web apps are deployed separately; the link above may still serve the older web assets until deployment.
+## Build
 
-## English — what makes analogBEAST different?
+Stage 18 was built on WSL with Python and the JieLi AC79 SDK/toolchain:
 
-analogBEAST turns the FM-1 into a small **instrument and song-performance workstation**. Its **MIKROKORG** routing offers a familiar virtual-analog structure with oscillator sync/ring modulation, filters and modulation. Switch to **BRUTE** for a genuinely different oscillator-mixing and filter path: ULTRASAW, PWM, metallic triangle wavefolding, a sub/overtone oscillator, **Brute Factor** feedback and a **nonlinear digital Steiner-Parker-inspired LP/BP/HP filter**. These are two different routings **inside the same GOLANA engine**, not two separate plug-in engines.
+```bash
+cd /mnt/c/FM1/analogBEAST-v1.2/analogBEAST-2.0-USB9-ENGINE-STAGE18-WORK
+export AC79_SDK=/home/datenzwerg/ac79-sdk
+export JIELI_TOOLCHAIN=/home/datenzwerg/.jieli/jieli-linux-toolchains-20260730.1
+python3 tools/build.py
+```
 
-The sequencer goes far beyond a short loop. **Eight banks and 128 pattern slots** provide both 64-step phrases and compact 16-step parts. **SONG MODE** chains patterns and commands into complete pieces; **ALBUM MODE** plays prepared groups of songs. A browser-based **Synth Studio** supplies sound and arpeggiator controls, graphical pattern/song/album editing and MIDI import.
+Reported build: `felucca.bin` 256,536 bytes; `.data + .bss` 60,388 / 73,728 bytes; DSP pool 302,048 / 368,640 bytes; `.fwsc` 610,086 bytes, identity `FM-1_901`. The bootloader package is generated by the ordinary build tooling; there is **no intended change to the boot manager or bootloader source in RC1**.
 
-**[Read the complete English documentation →](README.en.md)**
+## Flashing and recovery
 
-## Deutsch — mehr als ein Pattern-Looper
+**Make and verify an independent backup of any edited device presets before flashing.** Source-embedded P18/P19 records are not proof of current device-flash contents. Keep the known-good **USB8 ORIGINAL COMPOSITE** `.fwsc` outside this repository. Use the existing FM-1 installer, double-check package/device identity `FM-1_901`, and never disconnect while writing. If USB MIDI becomes unreachable, recovery may require a separate flashing route.
 
-analogBEAST macht aus dem FM-1 einen eigenständigen **Synthesizer, Hardware-Sequencer und Song-Player**. Das **MIKROKORG-Routing** liefert klassische virtuell-analoge Klanggestaltung. Das **BRUTE-Routing** verwendet einen anderen Oszillator-Mix und einen eigenen Filter-Signalweg mit **ULTRASAW, PWM, METAL-artigem Wavefolding, Sub/Obertönen, Brute Factor und einem digital modellierten Steiner-Parker-inspirierten LP/BP/HP-Filter**. Beide Routings gehören zur **gleichen GOLANA-Engine**.
+## To validate before final release
 
-Der Sequencer bietet **acht Bänke mit insgesamt 128 Pattern-Plätzen**. Lange 64-Step-Phrasen und kurze 16-Step-Patterns lassen sich im **SONG MODE** zu vollständigen Musikstücken kombinieren. Mit dem **ALBUM MODE** werden daraus ganze Abspielfolgen. Für Sound, ARP, Pattern, Songs, Albums und MIDI-Import gibt es einen grafischen Browser-Editor.
+1. Browse all 49 entries on actual FM-1, load A01 and L01, verify automatic engine selection and sound.
+2. Verify P18 SYNTH KEYBOARD and P19 PETZ MOOG retain their expected sound; never overwrite their slots during test.
+3. Exercise KORG↔BRUTE↔ANALOG↔LOFI↔B1 transitions, all four parts, voice cleanup and preset saves.
+4. Validate USB device/host modes and USB audio level independent of local MASTER on the intended computers/mobile devices.
+5. Rebuild B1 from the original control/signal-flow specification and validate by ear and measurements.
 
-**[Vollständige deutsche Dokumentation lesen →](README.de.md)**
+## Provenance / licenses
 
-## Try it in your browser / Direkt im Browser
-
-- **[Synth Studio / Webeditor](https://dzwerg.github.io/analogBEAST/webapp/editor/):** sound programs P01–P32, BRUTE/MIKROKORG parameters, ARP, graphical pattern/SONG/ALBUM editing and MIDI import.
-- **[Web Emulator](https://dzwerg.github.io/analogBEAST/emu/):** WebAssembly FM-1 simulation; no hardware required.
-- **[Web Installer](https://dzwerg.github.io/analogBEAST/webapp/installer/):** USB firmware update interface; requires a compatible Chrome/Edge browser and MIDI/SysEx permissions. **Back up device data first.** Verify device detection before writing.
-- **[GitHub v1.1 Release](https://github.com/dzwerg/analogBEAST/releases/tag/v1.1):** hardware-tested `.fwsc` firmware package and v1.1 source.
-- **[Earlier v1.0 Release](https://github.com/dzwerg/analogBEAST/releases/tag/v1.0):** previous firmware and emulator ZIP.
-
-## Build and safety
-
-The firmware uses the original **`FM-1_901`** package identity and the compatible `Felucca Update` loader name. Do not change either solely for branding. The original firmware sources, third-party credits, and licensing notices are retained. The included firmware package is for M-VAVE FM-1 hardware; installation is at your own risk. Preserve backups of any personal presets, patterns, songs and projects.
-
-**License:** GPL-3.0. Based on [Felucca](https://github.com/hugelton/Felucca) by Leo Kuroshita / Hügelton Instruments and [Golana](https://github.com/Gadlele/Golana). Other third-party license details are in [LICENSING.md](LICENSING.md) and [LICENSES/](LICENSES/). analogBEAST is not affiliated with or endorsed by M-VAVE, Arturia, or Korg. "Steiner-Parker", "microKORG", and "Brute" are descriptive references, not claims of hardware or circuit-level equivalence.
+This project integrates/derives material from Felucca, Golana and other firmware components. **Review and preserve all applicable upstream licenses and notices before a public redistribution.** This README does not claim original authorship over upstream code.

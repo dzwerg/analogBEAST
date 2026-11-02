@@ -647,7 +647,10 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
         if (!v->active)
             continue;
         {
-            env = env_tick(t, v);
+            /* VL-1 owns its envelope and release duration; do not let the
+             * general voice ADSR end it before its calculated release. */
+            env = (t->engine == ENGI_GOLANA && p[P_GLSYNTH] == 3)
+                ? 32767 : env_tick(t, v);
             if (e->ownenv && v->active) {               /* the engine's envelopes (FM6): they end the voice */
                 if (e->done(t, v)) {
                     v->active = v->gate = 0;
@@ -662,6 +665,10 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
                 env = e->amp(t, v, env);
             m.envq15 = e->ownenv ? 0 : env;
             m.amp1 = e->ownenv ? env : mulq15(env, v->vel * 258);
+            if (t->engine == ENGI_GOLANA && p[P_GLSYNTH] == 3) {
+                m.envq15 = 0; /* VL-1 applies velocity within its own voice */
+                m.amp1 = 32767;
+            }
             if (p[P_LD_AMP])
                 m.amp1 = mulq15(m.amp1, 32767 - mulq15(p[P_LPOL] ? lfo : (lfo + 32768) >> 1, p[P_LD_AMP] * 258));
             if (fade)                                   /* linear to 0 over the fade */

@@ -1,0 +1,51 @@
+{
+  "files": [
+    {
+      "path": "firmware/src/golana_dz_store.c",
+      "before_sha256_lf": "076601b6cab1e971ae406ad2626c2dc8136861d5c74ee75078f532a6a80c3e35",
+      "after_sha256_lf": "7c5fd43bdd1927386129cb0ad2d930daf31e8abf9bab3a1a9167a8a68bcb0791"
+    },
+    {
+      "path": "firmware/src/golana_dz_midi.c",
+      "before_sha256_lf": "f0e68900ad39310a176c19891cb49c3579a99c70fc544abda0f76c774267b79f",
+      "after_sha256_lf": "fd7b081bc04b5c41d4bd08d6da2aad6e3a23618d3d484ce88c9ac718350ada3b"
+    },
+    {
+      "path": "firmware/src/golana_ui.c",
+      "before_sha256_lf": "4b7a139fc966b94615a87a1bda2e429df9dcd78cc2721a5f80cc4fea4366d26f",
+      "after_sha256_lf": "81db14fb6dbbc125a14163c0e108b6047581cd8bbfe35fa104671073449affd6"
+    },
+    {
+      "path": "tests/test_analogbeast_v4_midi_protocol.c",
+      "before_sha256_lf": "b0f4cb82d2c37a8a39512481846f1fc4ed1dc3d6a56f914d0f5295219ad9295a",
+      "after_sha256_lf": "ecd32e2a49aa2ead3e52b46198037a0e9c697ede353575d386cab2f25c4d2c54"
+    },
+    {
+      "path": "tests/test_analogbeast_v4_safe_migration.c",
+      "before_sha256_lf": null,
+      "after_sha256_lf": "aaa0f676531882a06bd7795225e6aaeca09e328f8142d42008d51f122029df3b"
+    },
+    {
+      "path": "tests/test_analogbeast_v4_stage6_source.py",
+      "before_sha256_lf": null,
+      "after_sha256_lf": "cf561f2bd85b5137a3f8f198729818cde97a7c7acea13622702070a48d2ad25c"
+    },
+    {
+      "path": "tests/test_analogbeast_v4_safe_commit_tool.py",
+      "before_sha256_lf": null,
+      "after_sha256_lf": "b387377350d5d903a58b8e59185ba92b75ee05564fa92e8009f0e092b7ddaf20"
+    },
+    {
+      "path": "tools/analogbeast_commit_v4.py",
+      "before_sha256_lf": null,
+      "after_sha256_lf": "09d9ff9d45c6aee5f27ca985270252fc08d7bbc59d9636010998d78522a177be"
+    }
+  ],
+  "guards": {
+    "firmware/src/usb.c": "4fc17a5267b80dd1191b7d091cad95468a3358da28bb0663c07a1d6b73c6b284",
+    "firmware/src/eng_golana.c": "565e2754451ed5af4f94272b1eb4eb76081628c42cbc212a93c5fd573a36cb93",
+    "firmware/src/eng_golana.c.dev5-before-fb-fix.bak": "565e2754451ed5af4f94272b1eb4eb76081628c42cbc212a93c5fd573a36cb93",
+    "firmware/src/project.c": "877d2bb705a296f028ac5610fbcecc149ee11ab4d16300a75793d4d8fdfac977",
+    "tools/analogbeast_backup_v4.py": "ee2529e89b596e69348d74ec35eb6d58a992b1ce8c9a8e234034281165f0164a"
+  }
+}

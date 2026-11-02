@@ -348,7 +348,7 @@ static void con_params(void)
 static void con_exec(const char *p)
 {
     if (con_word(&p, "help") || con_word(&p, "?"))
-        con_puts("status  dbg  inp  crash  params  memr ADDR [LEN]  flr OFF [LEN]  uboot yes\r\n");
+        con_puts("status dbg inp crash params musicfs uboot yes\r\n");
     else if (con_word(&p, "status"))
         con_status();
     else if (con_word(&p, "dbg"))
@@ -364,6 +364,20 @@ static void con_exec(const char *p)
 #if FELUCCA_FLASH
     else if (con_word(&p, "flr"))
         con_flr(p);
+#if GOLANA
+#endif
+#endif
+    else if (con_word(&p, "patinfo")) ab15_console_status();
+    else if (con_word(&p, "patdisk")) ab15_console_disk(p);
+    else if (con_word(&p, "patlen")) ab15_console_len(p);
+    else if (con_word(&p, "patnote")) ab15_console_note(p);
+    else if (con_word(&p, "patrest")) ab15_console_rest(p);
+    else if (con_word(&p, "pattie")) ab15_console_tie(p);
+    else if (con_word(&p, "patloop")) ab15_console_loop(p);
+    else if (con_word(&p, "patoff")) ab15_console_off();
+#if FELUCCA_FLASH
+    else if (con_word(&p, "musicfs")) ab16_console_disk();
+    else if (con_word(&p, "patsave")) ab18_console_save();
 #endif
     else if (con_word(&p, "uboot")) {
         if (con_word(&p, "yes")) {

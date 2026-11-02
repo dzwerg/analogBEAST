@@ -1,0 +1,23 @@
+{
+  "version": "stage6b",
+  "description": "legacy read-only import before new NOR occupancy guard",
+  "files": [
+    {
+      "path": "firmware/src/golana_dz_store.c",
+      "before_sha256_lf": "7c5fd43bdd1927386129cb0ad2d930daf31e8abf9bab3a1a9167a8a68bcb0791",
+      "after_sha256_lf": "90c12d44e41757d2247fa256831672954bfa9df2dfb3e04dda29b382ac8462cc"
+    },
+    {
+      "path": "tests/test_analogbeast_v4_safe_migration_samples.c",
+      "before_sha256_lf": null,
+      "after_sha256_lf": "e3c0b7c7cd58acf7eb733bffab45a6afd44d784824a9c56d1cdfd15d554a4316"
+    }
+  ],
+  "guards": {
+    "firmware/src/usb.c": "4fc17a5267b80dd1191b7d091cad95468a3358da28bb0663c07a1d6b73c6b284",
+    "firmware/src/eng_golana.c": "565e2754451ed5af4f94272b1eb4eb76081628c42cbc212a93c5fd573a36cb93",
+    "firmware/src/eng_golana.c.dev5-before-fb-fix.bak": "565e2754451ed5af4f94272b1eb4eb76081628c42cbc212a93c5fd573a36cb93",
+    "firmware/src/golana_dz_midi.c": "fd7b081bc04b5c41d4bd08d6da2aad6e3a23618d3d484ce88c9ac718350ada3b",
+    "firmware/src/golana_ui.c": "81db14fb6dbbc125a14163c0e108b6047581cd8bbfe35fa104671073449affd6"
+  }
+}

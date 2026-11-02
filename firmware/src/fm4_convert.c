@@ -164,6 +164,17 @@ static uint32_t fm4_fall(int32_t t, int32_t drop)
         return drop == FM4_MUTE ? fm4_rate(t * 100 / 664) : 99u;
     return fm4_rate(t * 111 / drop);                   /* (exponential: most of the way at t / 2.3) */
 }
+/* Legacy DIGITAL conversion: original DX7 output-level mapping.
+ * No FM6 DSP dependency. */
+static int32_t fm4_scaleout(int32_t ol)
+{
+    static const uint8_t levels[20] = {
+        0, 5, 9, 13, 17, 20, 23, 25, 27, 29,
+        31, 33, 35, 37, 39, 41, 42, 43, 45, 46
+    };
+    return ol >= 20 ? 28 + ol : levels[ol < 0 ? 0 : ol];
+}
+
 /* the EG level (0..99) `ms` microsteps below level 99 (msfa: (scaleout(L) >> 1) << 6) */
 static uint32_t fm4_level(int32_t ms)
 {
@@ -172,7 +183,7 @@ static uint32_t fm4_level(int32_t ms)
     if (ms <= FM4_MUTE)
         return 0;
     for (l = 0; l < 100u; l++) {
-        int32_t d = fm4_abs(((fm6_scaleout((int32_t)l) >> 1) << 6) - (4032 + ms));
+        int32_t d = fm4_abs(((fm4_scaleout((int32_t)l) >> 1) << 6) - (4032 + ms));
         if (d < bd)
             bd = d, best = l;
     }
@@ -186,7 +197,7 @@ static uint32_t fm4_outlevel(int32_t ms)
     if (ms <= FM4_MUTE)
         return 0;
     for (l = 0; l < 100u; l++) {
-        int32_t d = fm4_abs((fm6_scaleout((int32_t)l) << 5) - (4064 + ms));
+        int32_t d = fm4_abs((fm4_scaleout((int32_t)l) << 5) - (4064 + ms));
         if (d < bd)
             bd = d, best = l;
     }
@@ -269,12 +280,12 @@ static uint32_t fm4_convert(int16_t *p, uint8_t *v)
             o[FP_L1 + 3] = 0;
             if (k == 3u && p[P_E6] && o[FP_OL]) {      /* op 4 a carrier (ALG 8): feedback on its output (sustain) */
                 int32_t need = fm4_ms((uint32_t)p[P_E6] * 258u * lvl >> 15) + 256;
-                int32_t out = (fm6_scaleout(o[FP_OL]) << 5) - 4064 + (ms_s == FM4_MUTE ? -2048 : ms_s);
+                int32_t out = (fm4_scaleout(o[FP_OL]) << 5) - 4064 + (ms_s == FM4_MUTE ? -2048 : ms_s);
                 if (p[P_E6] >= FM4_FB_NOISE && ms_s != FM4_MUTE && out < need) {   /* noisy: held up (louder) */
                     int32_t lift = need - out;
                     out += lift > FM4_FB_LIFT ? FM4_FB_LIFT : lift;
                     o[FP_OL] = (uint8_t)fm4_outlevel(out - ms_s);
-                    out = (fm6_scaleout(o[FP_OL]) << 5) - 4064 + ms_s;
+                    out = (fm4_scaleout(o[FP_OL]) << 5) - 4064 + ms_s;
                 }
                 fb = need - 256 - out;
             }

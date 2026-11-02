@@ -218,7 +218,10 @@ static const uint8_t DIV_DEN[6] = {1, 2, 4, 8, 3, 6};    /* original IDs stay fi
 static uint32_t midi_beat_samples;                    /* zero until an external clock has a measured tempo */
 static uint32_t beat_samples(void)
 {
-    return song.g[G_CLOCK] && midi_beat_samples ? midi_beat_samples : (uint32_t)FS * 60u / (uint32_t)song.g[G_BPM];
+    static uint16_t last_bpm = 120u; /* effects' timing while global TEMPO=0 */
+    if (song.g[G_BPM] > 0) last_bpm=(uint16_t)song.g[G_BPM];
+    return song.g[G_CLOCK] && midi_beat_samples ? midi_beat_samples :
+           (uint32_t)FS * 60u / (uint32_t)last_bpm;
 }
 static uint32_t div_samples(uint32_t div)
 {
@@ -1073,7 +1076,12 @@ static __attribute__((noinline)) void scope_take_mix(uint32_t n)
 static __attribute__((noinline)) void perf_master(int32_t *out, uint32_t n)
 {
     uint32_t i;
-    int32_t mg = fx_usb_fixed ? MASTER_FULL : (int32_t)song.master_q12;   /* (USB LEVEL FIXED: MASTER after) */
+    /* AB_USB6_USB_INDEPENDENT: analogBEAST USB tap always receives the full pre-pot mix. */
+#if GOLANA
+    int32_t mg = MASTER_FULL;
+#else
+    int32_t mg = fx_usb_fixed ? MASTER_FULL : (int32_t)song.master_q12;
+#endif
     for (i = 0; i < n; i++) {
         mix_l[i] = (((mix_l[i] + wet[i]) >> 2) * mg) >> 10;
         mix_r[i] = (((mix_r[i] + wet[i]) >> 2) * mg) >> 10;
@@ -1147,7 +1155,12 @@ static void mix_block(int32_t *out, uint32_t n)
 {
     uint32_t i;
     int perf;
-    int32_t mg = fx_usb_fixed ? MASTER_FULL : (int32_t)song.master_q12;   /* (USB LEVEL FIXED: MASTER after) */
+    /* AB_USB6_USB_INDEPENDENT: analogBEAST USB tap always receives the full pre-pot mix. */
+#if GOLANA
+    int32_t mg = MASTER_FULL;
+#else
+    int32_t mg = fx_usb_fixed ? MASTER_FULL : (int32_t)song.master_q12;
+#endif
     for (i = 0; i < n; i++)
         send_c[i] = send_d[i] = send_r[i] = mix_l[i] = mix_r[i] = 0;
     events_block(n);

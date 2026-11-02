@@ -9,6 +9,8 @@ typedef struct {
 static favorites_t favorites __attribute__((section(".pool")));
 static int favorite_has(uint32_t engine, uint32_t preset)
 {
+    /* USB9: row 14 belongs to MIDI Learn, never to B1 favorites. */
+    if (engine == ENGI_B1) return 0;
     if (engine == NENGINES)
         return preset < UP_SLOTS && ((favorites.user >> preset) & 1u);
     return engine < NENGINES && engine < 16u && preset < 256u &&
@@ -16,6 +18,8 @@ static int favorite_has(uint32_t engine, uint32_t preset)
 }
 static int favorite_set(uint32_t engine, uint32_t preset, int on)
 {
+    /* Preserve factory[14] MIDI Learn mappings: B1 favorites unavailable until migration. */
+    if (engine == ENGI_B1) return 0;
     if (engine > NENGINES || (engine == NENGINES ? preset >= UP_SLOTS : engine >= 16u || preset >= 256u))
         return 0;
     if (favorite_has(engine, preset) == !!on) return 0;

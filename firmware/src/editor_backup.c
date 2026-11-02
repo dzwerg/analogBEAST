@@ -190,10 +190,13 @@ static uint32_t ed_bk_write(const uint8_t *a, uint32_t n)
         uint32_t rc = ed_bk_commit(); ed_bk_put = 0; return rc;
     }
     if (n < 9u || a[6] > 15u || ed_bk_r32(a + 2) != ed_bk_pos) return 1;
-    uint32_t count = ed_unpack7(a + 7, n - 7u, ed_smp_buf, 256u);
-    if (!count || count > ed_bk_len - ed_bk_pos) return 1;
+    /* Validate first, then decode into the existing backup staging area.
+     * No legacy sample-upload buffer is needed. */
+    uint32_t count = ed_unpack7(a + 7, n - 7u, 0, 256u);
+    if (!count || ed_bk_pos > ed_bk_len || count > ed_bk_len - ed_bk_pos) return 1;
     if (ed_flash_stop()) return 3;
-    memcpy(ED_BK_RAW + ed_bk_pos, ed_smp_buf, count); ed_bk_pos += count;
+    if (ed_unpack7(a + 7, n - 7u, ED_BK_RAW + ed_bk_pos, count) != count) return 1;
+    ed_bk_pos += count;
     return 0;
 }
 static int ed_backup_handle(uint32_t cmd, const uint8_t *a, uint32_t n)

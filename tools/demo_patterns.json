@@ -1,0 +1,23 @@
+{
+  "patterns": [
+    {
+      "id": 510,
+      "length": 8,
+      "resolution": 2,
+      "steps": [
+        {
+          "step": 1,
+          "note": 60,
+          "velocity": 96,
+          "gate": 64
+        },
+        {
+          "step": 5,
+          "note": 67,
+          "velocity": 96,
+          "gate": 64
+        }
+      ]
+    }
+  ]
+}

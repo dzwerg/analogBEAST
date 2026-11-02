@@ -101,8 +101,7 @@ def generate():
             [tools / "gen_aa_keycaps.py", GEN / "ui_keycaps.h"],
             [tools / "gen_ui_palettes.py", GEN / "ui_palettes.h"],
             [tools / "gen_tables.py", GEN / "felucca_tables.h"],
-            [tools / "gen_fm6_patches.py", GEN / "felucca_fm6.h"],
-            [tools / "gen_samples.py", GEN / "felucca_samples.h"]]
+            [tools / "gen_analogbeast_empty_samples.py", GEN / "felucca_samples.h"]]
     procs = [subprocess.Popen([sys.executable, *map(str, c)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                               text=True) for c in cmds]
     failed = []
@@ -373,7 +372,7 @@ def main():
         # Brand the normal firmware artifact WITHOUT --release (which changes FM-1_901 to FM-1_910).
         if PRODUCT != "FM-1_901":
             raise SystemExit("analogBEAST: unexpected OTA identity; refusing branded artifact")
-        branded = OUT / "analogBEAST-v1.0.fwsc"
+        branded = OUT / "analogBEAST-v1.2-dev20.fwsc"
         branded.write_bytes(pkg)
         print(f"branded  {branded}  {len(pkg)} B, identity {PRODUCT}")
     att = SRC / "assets" / "samples-cc0" / "ATTRIBUTION.txt"

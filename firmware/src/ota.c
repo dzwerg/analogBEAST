@@ -267,7 +267,18 @@ static int ota_ufw(uint8_t *hdr, uint32_t *fl_off, uint32_t *fl_len, uint32_t *o
 
 static int ota_stage(void)                       /* steps 1..6; 0 = host said success */
 {
-    static uint8_t hdr[0x400] __attribute__((section(".pool"))), b[512] __attribute__((section(".pool"))), mine[512] __attribute__((section(".pool")));
+    /* Header is needed only while ota_ufw() parses the package. Once it
+     * returns, the two 512-byte transfer buffers can reuse the same 1 KiB.
+     * Never use hdr after the first ota_ufw() call. This is OTA-local,
+     * non-recursive scratch and does not overlap audio or MUSIC DISK state. */
+    static union {
+        uint8_t hdr[0x400];
+        struct { uint8_t b[512]; uint8_t mine[512]; } transfer;
+    } scratch __attribute__((section(".pool")));
+    _Static_assert(sizeof scratch == 0x400u, "OTA scratch must be exactly 1 KiB");
+    uint8_t *hdr = scratch.hdr;
+    uint8_t *b = scratch.transfer.b;
+    uint8_t *mine = scratch.transfer.mine;
     uint32_t i, n, ota_off, ota_len, fl_off, fl_len, c, len, own, official;
     int rc;
     /* 1. UFW header + entry list */
@@ -348,7 +359,8 @@ static void ota_unstage(void)
 /* returns only when nothing was committed (refused, failed, or dry run) */
 static int ota_session(void)
 {
-    static uint8_t parm[112];
+    /* OTA runs in foreground with audio silenced; use 112 B temporary stack. */
+    uint8_t parm[112];
     uint8_t back[112];
     uint32_t i;
     int rc;

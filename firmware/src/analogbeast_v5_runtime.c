@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 #include "analogbeast_v5_runtime.h"
 
+#if !GOLANA /* old V5 flash importer; not used by MUSIC DISK */
 int ab5_boot_preview(ab5_extra_t *dst,ab5_nor_state_t *state,
                      const ab_snapshot_t *v4,const ab_nor_io_t *io)
 {
@@ -25,6 +26,7 @@ int ab5_boot_preview(ab5_extra_t *dst,ab5_nor_state_t *state,
     return AB5_BOOT_V4_PREVIEW;
 }
 
+#endif /* !GOLANA old V5 flash importer */
 const ab_step_t *ab5_step_read(const ab5_extra_t *m,const ab_snapshot_t *v4,
                               uint8_t bank,uint8_t pattern,uint8_t step)
 {

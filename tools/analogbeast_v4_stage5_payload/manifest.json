@@ -1,0 +1,20 @@
+{
+  "version": "v4-stage5-regression-fix",
+  "files": [
+    {
+      "path": "firmware/src/project.c",
+      "before_sha256_lf": "a353fbb3b241a0ea7dae7a0f66e20454aa4b1e8a0d37df42350a955a84c61f4e",
+      "after_sha256_lf": "877d2bb705a296f028ac5610fbcecc149ee11ab4d16300a75793d4d8fdfac977"
+    },
+    {
+      "path": "tests/upreset_test.c",
+      "before_sha256_lf": "e86964f1e3b17292557f4ecfbd08d28fc4303f5424b2fafd87c46025ffbbf4a8",
+      "after_sha256_lf": "6d0b753ca4cf5fcb103a8af7cdb61683b5dad30a49250d34f7aa90453c0fb912"
+    },
+    {
+      "path": "tests/project_test.c",
+      "before_sha256_lf": "fbb079965de899da1d583ef44a7a88c955ba884c83eb3427ec60d05dc29904d3",
+      "after_sha256_lf": "68ef3d1d932add3b9c68c1f3082cb75093f75062f63c3b80d57c9054a450084d"
+    }
+  ]
+}

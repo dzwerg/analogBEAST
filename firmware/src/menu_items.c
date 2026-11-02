@@ -85,7 +85,11 @@ static const menu_flag_t MENU_FLAGS[] = {
     {MI_LARGE, PREF_LARGE, {"OFF", "ON"}},            /* #15 / Discussion #80: ON, big knob labels and values (ui.c large_kind) */
     {MI_ACCEL, PREF_ACCEL, {"OFF", "ON"}},            /* #52: ui_input.c accel */
     {MI_LATCH, PREF_LATCH, {"OFF", "ON"}},
-    {MI_USB, PREF_USB_FIXED, {"MASTER", "FIXED"}},     /* fx.c fx_usb_fixed: FIXED, USB at the full level */
+#if GOLANA
+    {MI_USB, PREF_USB_FIXED, {"GLO USB", "GLO USB"}},  /* AB_USB6_LEGACY_MENU: now GLO K2 */
+#else
+    {MI_USB, PREF_USB_FIXED, {"MASTER", "FIXED"}},
+#endif     /* fx.c fx_usb_fixed: FIXED, USB at the full level */
     {MI_BPMLOCK, PREF_BPM_LOCK, {"OFF", "ON"}},        /* #58: ON, SELECT sets the tempo with GLO held only (ui_input.c) */
     {MI_SERIAL, PREF_SERIAL_OFF, {"ON", "OFF"}},       /* #67: OFF, no serial console (usb_serial_apply) */
     {MI_RESTORE, PREF_RESTORE_OFF, {"ON", "OFF"}},     /* 1.2, #130: OFF, no autosave, power-on as new (project.c) */
@@ -145,12 +149,18 @@ static const menu_flag_t *menu_flag(uint32_t row)
 /* a row's value as 0..menu_n(row) - 1 in the order the menu steps it (LEDS: OFF DIM LO DIM HI INV, LEDS_MENU) */
 static uint32_t menu_n(uint32_t row)
 {
+#if GOLANA
+    if (row == MI_USB) return 1u;   /* USB6: read-only pointer to GLO USB LEVEL */
+#endif
     return row == MI_COLOR ? NPALETTES : row == MI_LOWCUT || (row >= MI_CLICK && row <= MI_COUNTIN) ? 3u :
            row == MI_HOLD ? 4u : row == MI_LEDS ? LEDS_COUNT : row == MI_SCROFF ? NELEM(SCROFF_N) :
            row == MI_TUNE ? TUNE_N : row == MI_MIDIIN ? NELEM(N_ROUTE) : row == MI_ANIM ? 3u : row == MI_HOME ? HV_COUNT : 2u;
 }
 static uint32_t menu_get(uint32_t row)
 {
+#if GOLANA
+    if (row == MI_USB) return 0u;
+#endif
     const menu_flag_t *f = menu_flag(row);
     uint32_t i = 0;
     if (f)
@@ -208,6 +218,9 @@ static const char *menu_vname(uint32_t row, uint32_t v)
  * kept with the project (PROJECT SAVE, the autosave), not by settings_save */
 static void menu_put(uint32_t row, uint32_t v)
 {
+#if GOLANA
+    if (row == MI_USB) return;  /* obsolete master-follow toggle cannot undo USB6 routing */
+#endif
     const menu_flag_t *f = menu_flag(row);
     if (f) {
         if (f->bit & PREF_X)

@@ -1373,11 +1373,13 @@ static void ui_input(void)
     int32_t s, sel = 0, ks[4] = {0, 0, 0, 0};
     static uint32_t lock_ms;                            /* BPM LOCK: the last locked SELECT turn (fm1_ms | 1; 0 none) */
     midi_pc_poll();                                     /* MIDI Program Change (before fm6_poll: a bank voice) */
-    fm6_poll();                                         /* FM6: PTCH turned -> its patch */
+#if !GOLANA
+    fm6_poll();                                         /* retired from analogBEAST */
 #if !FELUCCA_FM4
-    for (k = 0; k < NTRK; k++)                          /* a DIGITAL sound any other way (the paths convert it */
-        if (trk[k].eng_req == ENGI_DIGITAL)             /* already): FM6 (fm4_convert.c) */
+    for (k = 0; k < NTRK; k++)
+        if (trk[k].eng_req == ENGI_DIGITAL)
             fm4_track(&trk[k]);
+#endif
 #endif
     perf_latch_on = fx_latch & 1u;                      /* (MENU > FX LATCH; a settings load sets it too) */
     fx_map_sync();                                      /* (the FX layer's key map: ui_layer.c, a settings load too) */

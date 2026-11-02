@@ -65,6 +65,23 @@ FM1_INLINE void fm1_usb_off(void)
     FM1_USB_IO_CON0 = 0x0Cu;
 }
 
+/* Host PHY from MIDIMON / felucca-bsp PR #7 (MPL-2.0). Does not source VBUS. */
+FM1_INLINE void fm1_usb_host_attach(void *ep0)
+{
+    uint32_t n;
+    FM1_CLK_CON1 &= ~3u;
+    FM1_USB_EP0_ADR = (uint32_t)(uintptr_t)ep0;
+    for (n = 1; n <= 3u; n++) FM1_USB_EP_RADR(n) = (uint32_t)(uintptr_t)ep0;
+    FM1_USB_EP4_RADR = (uint32_t)(uintptr_t)ep0;
+    FM1_USB_CON0 = 0;
+    FM1_USB_CON1 = 0;
+    FM1_USB_IO_CON0 = 0;
+    FM1_USB_IO_CON0 |= (1u<<10) | (1u<<9) | (1u<<5) | (1u<<4);
+    FM1_USB_IO_CON0 &= ~((1u<<11) | (1u<<8));
+    FM1_USB_CON0 |= 0x25u;
+}
+FM1_INLINE uint32_t fm1_usb_line(void) { return (FM1_USB_CON0 >> 16) & 3u; }
+
 /* SIE access through CON1: only while CON0.bit2 (USB_NRST) is set */
 FM1_INLINE uint32_t fm1_usb_sie_on(void) { return FM1_USB_CON0 & 4u; }
 FM1_INLINE void fm1_usb_sie_wr_start(uint32_t r, uint32_t v)
@@ -107,6 +124,9 @@ FM1_INLINE void fm1_usb_ep4_send(void *p, uint32_t n)
 }
 FM1_INLINE void fm1_usb_rx_sync(void) { __asm__ volatile("ssync" ::: "memory"); }
 
+/* AB_USB5_EP_DISABLE: 1=disabled, 0=enabled, same endpoint mask as fm1_usb_ep_enable.
+ * Keep all FM1 register operations exclusively in HAL. */
+FM1_INLINE void fm1_usb_ep_disable(uint32_t eps) { FM1_USB_CON0 |= (eps << 19); }
 FM1_INLINE void fm1_usb_ep_enable(uint32_t eps) { FM1_USB_CON0 &= ~(eps << 19); }
 
 FM1_INLINE uint32_t fm1_usb_sof_take(void)

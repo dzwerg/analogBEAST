@@ -18,7 +18,7 @@ enum { ED_INFO = 1, ED_GET, ED_SET, ED_DUMP, ED_DESC, ED_STEP_GET, ED_STEP_SET, 
        ED_TRACK, ED_TRACK_MIX, ED_TRACK_DUMP, ED_TRACK_STEP,                    /* v3: tracks */
        ED_TRACK_PARAM, ED_TRACK_CHANGED, ED_SONG,
        ED_UI_STATE, ED_UI_SET, ED_UI_PALETTES, ED_FAV_GET, ED_FAV_SET,
-       ED_MOTION = 64, ED_BACKUP_LIST, ED_BACKUP_GET, ED_BACKUP_PUT };                              /* v6: song chain */
+       ED_MOTION = 64, ED_BACKUP_LIST, ED_BACKUP_GET, ED_BACKUP_PUT, ED_MD_DISK = 90 };                              /* v6: song chain */
 
 static uint8_t ed_out[664] __attribute__((section(".pool")));   /* (MOTION op 8: 128 records and their kinds, 653 bytes) */
 static uint32_t ed_n;
@@ -71,10 +71,14 @@ static uint32_t ed_unpack7(const uint8_t *a, uint32_t na, uint8_t *out, uint32_t
         if (!k || n + k > max || (m >> k))
             return 0;                              /* incomplete group, overflow, or unused mask bits */
         for (j = 0; j < k; j++, na--)
-            out[n++] = (uint8_t)(*a++ | ((m >> j) & 1u) << 7);
+            {
+                if (out) out[n] = (uint8_t)(*a | ((m >> j) & 1u) << 7);
+                a++; n++;
+            }
     }
     return na ? 0u : n;
 }
+#if !GOLANA /* obsolete sample uploader must not exist in analogBEAST */
 static uint8_t ed_smp_buf[512] __attribute__((aligned(4), section(".pool")));
 static uint32_t ed_smp_slot(uint32_t k) { return SMP_USER_BASE + k * SMP_USER_SIZE; }
 static void ed_smp_inval(uint32_t k)
@@ -86,7 +90,7 @@ static void ed_smp_inval(uint32_t k)
 static int ed_smp_erase(uint32_t k, uint32_t all)  /* header sector, or the whole slot */
 {
     /* v5 owns slot 3: block all generic sample erasures unconditionally. */
-    if (k == 2u) return -1;
+    if (ab18_disk_owned || k == 2u) return -1;
     uint32_t i, took;
     int rc = 0;
     usr_nz[k] = 0;
@@ -103,7 +107,7 @@ static int ed_smp_erase(uint32_t k, uint32_t all)  /* header sector, or the whol
 static int ed_flash_stop(void);
 static int ed_smp_end(uint32_t k, const uint8_t *a, uint32_t na)
 {
-    if (k == 2u) return 1; /* v5 A/B storage, never create an FSMP header */
+    if (ab18_disk_owned || k == 2u) return 1; /* MUSIC DISK owns all user sample sectors */
     const smp_user_hdr_t *h = (const smp_user_hdr_t *)ed_smp_buf;
     if (ed_unpack7(a, na, ed_smp_buf, sizeof(smp_user_hdr_t)) != sizeof(smp_user_hdr_t))
         return 1;
@@ -124,6 +128,7 @@ static int ed_smp_end(uint32_t k, const uint8_t *a, uint32_t na)
     return usr_nz[k] ? 0 : 5;
 }
 
+#endif /* !GOLANA legacy sample upload */
 /* the engine byte of DUMP / RELOAD / TRACK */
 static uint32_t ed_eng(const track_t *t) { return t->eng_req % NENGINES; }
 
@@ -420,9 +425,6 @@ static int ed_args_ok(uint32_t cmd, const uint8_t *a, uint32_t n)
     }
 }
 
-#if GOLANA
-static uint32_t dz_midi_request(const uint8_t *a, uint32_t n, uint8_t *out);
-#endif
 
 static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0 and F7 */
 {
@@ -435,18 +437,18 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
     const param_desc_t *d;
     if (!ed_args_ok(cmd, a, na))
         return;
+    /* Retire competing legacy song/sample/FM6 flash transfer protocols.
+     * Reply with unsupported; NEVER erase a sector claimed by MD16.
+     * Command 90 (ED_MD_DISK) remains the sole MUSIC DISK transport. */
+    if (cmd == 96u || (cmd >= ED_SMP_BEGIN && cmd <= ED_SMP_INFO) ||
+        (cmd >= ED_FM6B_BEGIN && cmd <= ED_FM6B_END)) {
+        ed_begin(cmd); ed_b(3u); ed_send(); return;
+    }
     if ((cmd >= ED_SMP_BEGIN && cmd <= ED_SMP_INFO) || (cmd >= ED_BACKUP_LIST && cmd <= ED_BACKUP_PUT) ||
-        (cmd >= ED_FM6B_BEGIN && cmd <= ED_FM6B_END))
+        (cmd >= ED_FM6B_BEGIN && cmd <= ED_FM6B_END) || cmd == ED_MD_DISK)
         autosave_hold();                                /* (a transfer: no autosave meanwhile, project.c) */
     ed_begin(cmd);
-#if GOLANA
-    if (cmd == 96u) {
-        uint8_t reply[200];
-        uint32_t rn = dz_midi_request(a, na, reply);
-        for (i = 0; i < rn; i++) ed_b(reply[i]);
-        ed_send(); return;
-    }
-#endif
+    if (cmd == ED_MD_DISK) { ab_md_editor_cmd(a, na); ed_send(); return; }
     if (ed_ui_handle(cmd, a, na)) { ed_send(); return; }
     if (ed_backup_handle(cmd, a, na)) { ed_send(); return; }
     if (ed_fm6_handle(cmd, a, na)) { ed_send(); return; }
@@ -610,6 +612,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         for (i = 0; i < 2u; i++)                           /* then the two edit-page titles */
             ed_str(ENGINES[a[0]]->page_title[i], 8);
         break;
+#if !GOLANA
     case ED_SMP_BEGIN:                                     /* slot -> slot, rc */
     case ED_SMP_ERASE:
         if (na < 1u || a[0] >= SMP_USER_SLOTS || !flash_ok)
@@ -623,7 +626,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
             return;
         off = (uint32_t)a[1] | (uint32_t)a[2] << 7 | (uint32_t)a[3] << 14;
         len = ed_unpack7(a + 4, na - 4u, ed_smp_buf, 256u);
-        if (a[0] == 2u || off < SMP_USER_DATA || (off & 0xFFu) || !len || off + len > SMP_USER_SIZE)
+        if (ab18_disk_owned || a[0] == 2u || off < SMP_USER_DATA || (off & 0xFFu) || !len || off + len > SMP_USER_SIZE)
             rc = 1;
         else if (usr_nz[a[0]])
             rc = 4;                                        /* slot in use: SMP_BEGIN first (voices read it) */
@@ -664,6 +667,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
             ed_b(usr_nz[i] ? (h->data_len + 1023u) / 1024u : 0u);
         }
         break;
+#endif /* !GOLANA: old sample write handlers deleted from build */
     case ED_UP_LIST: {                                     /* start, count -> start, count, total, per slot: used, engine, name;
                                                             * (1.2) then per slot its category (category.c CAT_*, 0 unused):
                                                             * after the entries, so an older editor stops before them */

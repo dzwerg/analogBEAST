@@ -17,11 +17,19 @@
 #define FELUCCA_OTA_DRYRUN 0     /* 1 = stage, ask "success", then undo: no record, no reset */
 #endif
 #ifndef FELUCCA_CDC
-#define FELUCCA_CDC 1            /* USB CDC-ACM serial console */
+#define FELUCCA_CDC 0            /* Web-MIDI/SysEx only; no serial CDC console */
 #endif
 #ifndef FELUCCA_UAC
 #define FELUCCA_UAC 1            /* USB audio input: the master output, 16-bit stereo 44.1 kHz (usb.c) */
 #endif
+/* AB_USB1_FORCE_PROFILE: synth-side device profile, NEVER the OTA loader. */
+#undef FELUCCA_CDC
+#define FELUCCA_CDC 0
+#undef FELUCCA_UAC
+#define FELUCCA_UAC 1
+#undef FELUCCA_UAC_48K
+#define FELUCCA_UAC_48K 0
+/* Keep MIDI+Audio composite and PORT2 host intact in USB1. */
 #ifndef FELUCCA_UAC_TONE
 #define FELUCCA_UAC_TONE 0       /* bench: the USB input sends test triangles instead of the music */
 #endif
@@ -32,7 +40,7 @@
 #define FELUCCA_ID "FM-1_901"    /* package identity (build.py: the .fwsc marker string) */
 #endif
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "v1.0"   /* (GOLANA 1.0) shown in the menu, the console and the editor; build.py --release X.Y */
+#define FELUCCA_VERSION "v1.2-CLEANUP5"   /* (GOLANA 1.0) shown in the menu, the console and the editor; build.py --release X.Y */
 #endif
 #define AB_BRAND_NAME "analogBEAST"   /* user-facing app name; OTA ID remains FM-1_901 */
 #if FELUCCA_OTA && !FELUCCA_FLASH
@@ -67,11 +75,15 @@
 #include "fx.c"
 
 /* ------------------------------------------------- MIDI, sequencer --- */
+#define FELUCCA_USB_HOST 1  /* USB host compiled, DEVICE mode on every power-on */
 #include "usb.c"
 #if FELUCCA_UART
 #include "midi_uart.c"
 #endif
 #include "song_chain.c"
+#if GOLANA
+#include "ab_midi_router.c"  /* v1.3: 4x3 MIDI route core */
+#endif
 #include "seq.c"
 #include "audio.c"
 
@@ -89,10 +101,14 @@
 /* --------------------------------------------- storage, update, editor --- */
 #if FELUCCA_FLASH
 #include "fm1_flash.h"
+static uint8_t ab18_disk_owned; /* protects MD16 volume from old data writers */
 #include "storage_hw.c"
 #include "storage.c"
+#if GOLANA
 #endif
-#include "upreset.c"             /* user presets (RAM mirror; flash with FELUCCA_FLASH) */
+#endif
+#include "upreset.c"
+#include "ab_presets_original.c" /* two original GOLANA presets, RAM cache only */             /* user presets (RAM mirror; flash with FELUCCA_FLASH) */
 #if GOLANA
 #include "golana_ext.c"          /* 48 additional steps per program, song settings */
 #include "analogbeast_snapshot.c" /* v4 portable pattern/song format */
@@ -103,7 +119,7 @@
 #include "golana_dz_store.c" /* DZ: two-page crash-consistent flash store */
 #include "analogbeast_v5_extra.c"   /* v5 Stage 3: RAM preview; NO v5 flash writes */
 #include "analogbeast_v5_controls.c" /* v5 Stage 4a: bounded RAM-only UI edits */
-#include "analogbeast_v5_nor.c"     /* v5 NOR read/probe only */
+#include "analogbeast_v5_nor.h" /* ABI types only; no legacy NOR I/O */     /* v5 NOR read/probe only */
 #include "analogbeast_v5_runtime.c" /* read-only boot + pure playback model */
 #endif
 #if FELUCCA_OTA
@@ -113,14 +129,85 @@ static uint8_t rescue_active;            /* main.c golana_rescue: the USB rescue
 #endif
 #include "ota.c"
 #include "ota_hw.c"
+static void ab_md_editor_cmd(const uint8_t *a,uint32_t n);
 #include "editor.c"              /* web editor SysEx (needs the OTA SysEx plumbing) */
 #endif
+/* The MUSIC DISK runtime and its player are NOT console dependencies.
+ * In CLEANUP2 all of these were erroneously nested inside FELUCCA_CDC.
+ * Keep them compiled for Web-MIDI/SysEx and device playback with CDC off. */
+#include "ab15_player.c"
+static ab15_player ab15_cache;
+static void ab15_audio_page(track_t *t);
+static uint32_t ab15_audio_gate(uint32_t idx);
+#if FELUCCA_FLASH
+#include "ab16_fs.c"
+#include "ab18_store.c"
+#endif
+#include "ab17_delete.c"
+static ab17_delete_t ab17_ui_delete;
+static int ab18_mount(ab16_fs *fs,int writing);
+static int ab18_save_current(void);
+static int ab18_delete_current(void);
+static int ab18_nav(int32_t clicks);
+static int ab18_load_disk(uint16_t id);
+static int ab18_index_refresh(void);
+static int ab18_fast_first(uint16_t type,uint32_t *selected);
+static int ab18_fast_next(uint16_t type,uint32_t current,int dir,uint32_t *selected);
+static int ab18_fast_read(uint16_t type,uint32_t id,void *dst,uint32_t cap,uint32_t *length,int allow_factory_empty);
+static int ab18_fast_pattern(uint16_t id,ab13_pattern *p,int allow_factory_empty);
+static int ab18_load_song_obj(uint16_t id,ab13_song *s);
+static int ab18_save_song_obj(uint16_t id,const ab13_song *s);
+static int ab18_load_album_obj(uint16_t id,ab13_album *a);
+static int ab18_save_album_obj(uint16_t id,const ab13_album *a);
+static uint8_t ab_m_playing;
+static int ab_m_start(uint16_t id);
+static int ab_m_open(uint16_t id,uint8_t *meta,uint32_t *length);
+static int ab_m_exists(uint16_t id);
+static void ab_m_repeat(uint8_t repeat);
+static void ab_m_stop(void);
+static void ab_m_play_service(void);
+static int ab18_index_ensure(void);
+static uint32_t ab18_ix_get(uint16_t type,uint32_t id);
+static int ab18_ready(void);
 #if FELUCCA_CDC
+/* Optional debugging console only. Never required for MUSIC DISK. */
+#include "ab13_disk.h"
+static int ab13_probe(void);
+static int32_t ab13_file_count(void);
+static int32_t ab13_disk_generation(void);
+static int ab13_selfcheck(void);
+static void ab15_console_status(void);
+static void ab15_console_disk(const char*p);
+static void ab15_console_len(const char*p);
+static void ab15_console_note(const char*p);
+static void ab15_console_rest(const char*p);
+static void ab15_console_tie(const char*p);
+static void ab15_console_loop(const char*p);
+static void ab15_console_off(void);
+#if FELUCCA_FLASH
+static void ab16_console_disk(void);
+#endif
+static void ab18_console_save(void);
 #include "console.c"
 #endif
+/* Platform read bridge: also required when CDC is disabled. */
+#include "ab16_fm1.c"
 #include "master.c"              /* the MASTER pot (#137: read before the audio starts) */
 #if GOLANA
-#include "golana_ui.c"           /* Golana's interface (main.c calls it instead of Felucca's) */
-#include "golana_dz_midi.c"
+#if FELUCCA_FLASH && GOLANA
+/* Existing MD16 volume only: no boot-time pattern injection. */
+static int ab20_first_boot(void);
+static int ab20_clear_for_other_firmware(void);
+static int ab20_boot_rc;
+#endif
+#include "golana_ui.c"
+#include "ab13_fm1.c"
+#include "ab15_fm1.c"
+#include "ab18_fm1.c"
+#include "ab_musicbox.c"
+#include "ab_md_sysex.c" /* MUSIC DISK transfer through the EXISTING Web-MIDI editor */
+#include "ab19_fm1.c"
+#include "ab20_fm1.c" /* 292-KiB MUSIC DISK, original stock app slot */
+/* Legacy SysEx command 96 retired: MD16 is the single transfer path. */
 #endif
 #include "main.c"

@@ -62,7 +62,7 @@ static const slc_src_t SLC_BREAK = SLC_BREAK_INIT;
 static const slc_src_t SLC_PIANO = SLC_PIANO_INIT;
 static slc_src_t slc_usr[SMP_USER_SLOTS];
 typedef int16_t slc_rbuf_t[NVOICE][SLC_RB];           /* reverse windows, one per part voice (the part's eng_mem) */
-ENG_MEM_FITS("SLICE", sizeof(slc_rbuf_t));
+/* obsolete engine never selected in GOLANA build */
 /* append-only: stored sounds keep their SRC numbers (1.0.4 added PIANO) */
 static const char *const N_SLC_SRC[] = {"BREAK", "USR1", "USR2", "USR3", "PIANO"};
 #define SLC_SRC_PIANO 4u
