@@ -155,3 +155,18 @@ RC1 basiert auf dem nativen Stage-18-Build. Es handelt sich um
 ein experimentelles Pre-Release. Insbesondere MUSIC DISK,
 USB-Host-Kompatibilität, Preset-Wechsel und B1-Klangverhalten
 sind noch nicht vollständig auf Hardware validiert.
+## RC2: Firmware Hub identity and publication
+
+RC2 introduces the unique identity candidate `FM-1_947` with
+update-loader identity `ota-FM-1_947`. It preserves the MUSIC DISK
+architecture, the existing 32 user preset slots, the embedded P18/P19
+originals and the 17 Felucca factory sounds.
+
+The RC2 package was natively built and successfully installed from
+FM-1_901. A fresh post-reboot query reported FM-1_947 running.
+
+The return update to another firmware, install from official V15,
+and interrupted-update recovery have not yet been hardware tested.
+
+The full change history and MUSIC DISK limitations are described
+in this README and in RELEASE_NOTES.md.

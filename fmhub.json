@@ -1,0 +1,9 @@
+{
+    "color":  "#FF7A00",
+    "kinds":  [
+                  "synth",
+                  "groove"
+              ],
+    "author":  "dzwerg",
+    "what":  "Multi-engine synth and groovebox for M-VAVE FM-1 with KORG, BRUTE, ANALOG, LOFI and experimental B1 sounds. Includes pattern/song/album sequencing, MUSIC DISK storage, presets and USB MIDI/audio."
+}
